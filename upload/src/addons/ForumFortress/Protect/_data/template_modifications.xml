@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<template_modifications>
+  <modification type="public" template="approval_queue_macros" modification_key="ffProtectTimeoutLabel" description="Show Forum Fortress timeout labels on approval queue items" execution_order="10" enabled="1" action="str_replace">
+    <find><![CDATA[<span class="message-attribution-opposite">{{ typePhraseHtml|raw }}</span>]]></find>
+    <replace><![CDATA[<span class="message-attribution-opposite">{{ typePhraseHtml|raw }}<xf:if is="$unapprovedItem.ffProtectTimeoutLabel"> <span class="label label--accent label--smallest">{{ phrase('ff_timeout') }}</span></xf:if></span>]]></replace>
+  </modification>
+</template_modifications>

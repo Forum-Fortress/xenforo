@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<templates>
+  <template type="admin" title="ff_protect_overview" version_id="1800400" version_string="1.8.4"><![CDATA[<xf:title>Forum Fortress</xf:title>
+
+<style>
+.ffDashboard { padding-top: 24px; }
+.ffPanel { --ff-green: #087443; --ff-green-bright: #159458; --ff-green-soft: rgba(8,116,67,.1); --ff-amber: #b86313; --ff-border: rgba(127,127,127,.22); display: grid; gap: 14px; }
+.ffCard { overflow: hidden; border: 1px solid var(--ff-border); border-radius: 10px; background: var(--xf-contentBg); box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+.ffHero { border-top: 3px solid var(--ff-green); }
+.ffHeroHeader { display: flex; align-items: center; gap: 13px; padding: 18px; background: linear-gradient(135deg, var(--ff-green-soft), transparent 62%); }
+.ffMark { display: grid; flex: 0 0 46px; width: 46px; height: 50px; place-content: center; gap: 4px; clip-path: polygon(50% 0,94% 16%,88% 67%,70% 88%,50% 100%,30% 88%,12% 67%,6% 16%); background: linear-gradient(145deg, var(--ff-green-bright), #034f2e); filter: drop-shadow(0 2px 2px rgba(0,0,0,.18)); }
+.ffMark i { display: block; width: 25px; height: 4px; border-radius: 3px; background: #f4f0e5; }
+.ffMark i:nth-child(2) { width: 20px; } .ffMark i:nth-child(3) { width: 15px; }
+.ffHeroCopy { display: grid; flex: 1; gap: 2px; } .ffHeroCopy strong { font-size: 17px; }
+.ffHeroCopy span, .ffSectionHeader span, .ffMaintenance small, .ffMetric span { color: var(--xf-textColorMuted); }
+.ffPill { padding: 5px 10px; border-radius: 999px; background: rgba(108,116,128,.12); color: var(--xf-textColorMuted); font-size: 12px; font-weight: 700; }
+.ffPill.is-connected { background: var(--ff-green-soft); color: var(--ff-green-bright); }
+.ffActionGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; padding: 0 18px 18px; }
+.ffActionGrid > form { display: flex; } .ffButton { justify-content: center; min-height: 42px; width: 100%; font-weight: 600; }
+.ffButton--portal { background: var(--ff-green) !important; border-color: var(--ff-green) !important; } .ffButton--portal:hover, .ffButton--portal:focus { background: var(--ff-green-bright) !important; }
+.ffButton--attack { color: var(--ff-amber); border-color: rgba(184,99,19,.45); }
+.ffNotice { display: flex; align-items: flex-start; gap: 9px; padding: 11px 13px; border: 1px solid transparent; border-radius: 8px; line-height: 1.45; }
+.ffNotice span { flex: 1; } .ffNotice.is-success { border-color: rgba(21,148,88,.28); background: rgba(21,148,88,.09); color: var(--ff-green); } .ffNotice.is-error { border-color: rgba(197,48,48,.28); background: rgba(197,48,48,.09); color: #a42424; }
+.ffSectionHeader { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; border-bottom: 1px solid var(--ff-border); }
+.ffSectionHeader > div { display: grid; gap: 2px; }
+.ffStatusGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); }
+.ffMetric { display: grid; gap: 4px; min-width: 0; padding: 13px 16px; border-bottom: 1px solid var(--ff-border); }
+.ffMetric:nth-child(odd) { border-right: 1px solid var(--ff-border); } .ffMetric:nth-last-child(-n+2) { border-bottom: 0; }
+.ffMetric span { font-size: 12px; } .ffMetric strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; } .ffMetric.is-good strong { color: var(--ff-green-bright); }
+.ffMaintenance summary { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; cursor: pointer; list-style: none; }
+.ffMaintenance summary::-webkit-details-marker { display: none; } .ffMaintenance summary span { display: grid; gap: 2px; } .ffMaintenance[open] summary { border-bottom: 1px solid var(--ff-border); } .ffMaintenance[open] summary > i { transform: rotate(180deg); }
+.ffMaintenanceBody { padding: 14px 16px 16px; } .ffMaintenanceBody p { margin: 0 0 12px; color: var(--xf-textColorMuted); } .ffMaintenanceActions { max-width: 240px; }
+.ffTable { margin: 0; } .ffTable td:first-child { width: 34%; color: var(--xf-textColorMuted); } .ffTable td { vertical-align: top; }
+.ffDiagnostics { margin-top: 0; } .ffDiagnostics > summary { padding: 14px 16px; cursor: pointer; font-weight: 600; } .ffDiagnostics .block-body { border-top: 1px solid var(--ff-border); }
+@media (max-width: 600px) { .ffDashboard { padding-top: 16px; } .ffHeroHeader { align-items: flex-start; } .ffPill { margin-left: auto; } .ffActionGrid, .ffStatusGrid { grid-template-columns: 1fr; } .ffMetric:nth-child(odd) { border-right: 0; } .ffMetric:nth-last-child(2) { border-bottom: 1px solid var(--ff-border); } }
+</style>
+
+<div class="ffDashboard"><div class="ffPanel">
+	<div class="ffCard ffHero">
+		<div class="ffHeroHeader">
+			<div class="ffMark" aria-hidden="true"><i></i><i></i><i></i></div>
+			<div class="ffHeroCopy"><strong>Forum Fortress</strong><span>Protection status, controls, and account links.</span></div>
+			<span class="ffPill {{ $siteStatus ? 'is-connected' : '' }}">{{ $siteStatus ? 'Connected' : ($enabled ? 'Configured' : 'Not checked') }}</span>
+		</div>
+		<div class="ffActionGrid">
+			<xf:if is="$siteId && $apiKeyMasked"><xf:form action="{{ link('forum-fortress/portal') }}" ajax="false" target="_blank"><xf:button type="submit" class="button--primary button--large ffButton ffButton--portal">Portal Login</xf:button></xf:form><xf:else /><xf:button class="button--primary button--large ffButton ffButton--portal" disabled="true">Portal Login</xf:button></xf:if>
+			<xf:form action="{{ link('forum-fortress/test') }}" ajax="false"><xf:button type="submit" class="button--primary button--large ffButton">Connection test</xf:button></xf:form>
+			<xf:if is="$siteId"><xf:if is="$siteStatus && $siteStatus.attack_mode_active"><xf:form action="{{ link('forum-fortress/attack-mode-end') }}" ajax="false"><xf:button type="submit" class="button--link button--large ffButton">End attack mode</xf:button></xf:form><xf:else /><xf:form action="{{ link('forum-fortress/attack-mode') }}" ajax="false"><xf:button type="submit" class="button--cta button--large ffButton ffButton--attack">Enable attack mode</xf:button></xf:form></xf:if><xf:else /><xf:button class="button--cta button--large ffButton ffButton--attack" disabled="true">Enable attack mode</xf:button></xf:if>
+			<xf:button href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}" class="button--link button--large ffButton">Settings</xf:button>
+		</div>
+	</div>
+
+	<xf:if is="$autoBootstrap || $attackModeResult || $registerResult || $portalResult || $result">
+		<xf:if is="$autoBootstrap"><div class="ffNotice {{ $autoBootstrap.error ? 'is-error' : 'is-success' }}"><span><strong>Automatic bootstrap:</strong> <xf:if is="$autoBootstrap.error">{$autoBootstrap.error}<xf:else />Forum Fortress returned a site identity and API key automatically.</xf:if></span></div></xf:if>
+		<xf:if is="$attackModeResult"><div class="ffNotice {{ $attackModeResult.error ? 'is-error' : 'is-success' }}"><span><strong>Attack mode:</strong> <xf:if is="$attackModeResult.error">{$attackModeResult.error}<xf:elseif is="$attackModeResult.status == 'ok'" /><xf:if is="$attackModeResult.attack_mode_active">Attack mode is active.<xf:else />Attack mode has ended.</xf:if><xf:else />No response was returned by the API.</xf:if></span></div></xf:if>
+		<xf:if is="$registerResult"><div class="ffNotice {{ $registerResult.error ? 'is-error' : 'is-success' }}"><span><strong>Registration:</strong> <xf:if is="$registerResult.error">{$registerResult.error}<xf:elseif is="$registerResult.status == 'ok'" />Registration completed.<xf:else />No response was returned by the API.</xf:if></span></div></xf:if>
+		<xf:if is="$portalResult"><div class="ffNotice is-error"><span><strong>Portal login:</strong> <xf:if is="$portalResult.error">{$portalResult.error}<xf:else />No portal login URL was returned by the API.</xf:if></span></div></xf:if>
+		<xf:if is="$result"><div class="ffNotice {{ $result.error ? 'is-error' : 'is-success' }}"><span><strong>Connection test:</strong> Bootstrap {$result.bootstrap_status}; health {$result.health_status}; capabilities {$result.capabilities_status}; site status {$result.site_status_status}.<xf:if is="$result.error"> {$result.error}</xf:if></span></div></xf:if>
+	</xf:if>
+
+	<div class="ffCard">
+		<div class="ffSectionHeader"><div><strong>Site status</strong><span>Current protection and service details.</span></div></div>
+		<div class="ffStatusGrid">
+			<div class="ffMetric {{ $enabled ? 'is-good' : '' }}"><span>Protection</span><strong>{{ $enabled ? 'Enabled' : 'Disabled' }}</strong></div>
+			<div class="ffMetric {{ $siteStatus ? 'is-good' : '' }}"><span>Connection</span><strong>{{ $siteStatus ? 'Connected' : 'Not checked' }}</strong></div>
+			<div class="ffMetric"><span>Plan</span><strong><xf:if is="$siteStatus">{$siteStatus.plan}<xf:else />Unknown</xf:if></strong></div>
+			<div class="ffMetric"><span>Site ID</span><strong><xf:if is="$siteId">{$siteId}<xf:else />Not set</xf:if></strong></div>
+			<div class="ffMetric"><span>Preferred endpoint</span><strong><xf:if is="$preferredEndpoint">{$preferredEndpoint}<xf:else />Unknown</xf:if></strong></div>
+			<div class="ffMetric"><span>Attack mode</span><strong><xf:if is="$siteStatus">{{ $siteStatus.attack_mode_active ? 'Active' : 'Inactive' }}<xf:else />Unknown</xf:if></strong></div>
+			<div class="ffMetric"><span>Checks this month</span><strong><xf:if is="$forumStats">{$forumStats.current_month_checks}<xf:else />Unknown</xf:if></strong></div>
+			<div class="ffMetric"><span>Decisions</span><strong><xf:if is="$forumStats">{$forumStats.allows} allowed / {$forumStats.blocks} blocked<xf:else />Unknown</xf:if></strong></div>
+		</div>
+	</div>
+
+	<xf:if is="$siteStatus && $siteStatus.registration_required"><details class="ffCard ffMaintenance" open="open"><summary><span><strong>Complete registration</strong><small>Upgrade the plan and replace the temporary key with a live key.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>This site is currently running in anonymous mode.</p><xf:form action="{{ link('forum-fortress/register') }}" ajax="true"><xf:textboxrow name="registration_email" type="email" required="true" label="Email address" /><xf:submitrow submit="Complete registration" /></xf:form></div></details></xf:if>
+
+	<details class="ffCard ffMaintenance ffDiagnostics"><summary>Diagnostics and endpoint health <i class="fa--xf far fa-chevron-down"></i></summary><div class="block-body">
+		<table class="dataList ffTable"><tbody>
+			<tr><td>API base URL</td><td>{$apiBaseUrl}</td></tr><tr><td>Stored API key</td><td><xf:if is="$apiKeyMasked">{$apiKeyMasked}<xf:else />Not set</xf:if></td></tr><tr><td>Domain</td><td>{$domain}</td></tr><tr><td>Preferred endpoint missing</td><td><xf:if is="$preferredMissingEndpoint">{$preferredMissingEndpoint}<xf:else />No</xf:if></td></tr><tr><td>Test answered by endpoint</td><td><xf:if is="$result && $result.answered_endpoint">{$result.answered_endpoint}<xf:elseif is="$lastRespondedEndpoint" />{$lastRespondedEndpoint}<xf:else />Unknown</xf:if></td></tr><tr><td>Forum last synced</td><td><xf:if is="$endpointState && $endpointState.last_site_ping_at">{{ date($endpointState.last_site_ping_at, 'Y-m-d H:i:s') }} UTC<xf:else />Unknown</xf:if></td></tr><tr><td>Last endpoint health check</td><td><xf:if is="$endpointState && $endpointState.last_health_at">{{ date($endpointState.last_health_at, 'Y-m-d H:i:s') }} UTC<xf:else />Unknown</xf:if></td></tr><tr><td>Last API failover</td><td><xf:if is="$endpointState && $endpointState.last_failure">{$endpointState.last_failure.reason} on {$endpointState.last_failure.path} via {$endpointState.last_failure.base}<xf:else />None</xf:if></td></tr><tr><td>Dataset version</td><td><xf:if is="$siteStatus && $siteStatus.dataset_version">{$siteStatus.dataset_version}<xf:else />Unknown</xf:if></td></tr>
+		</tbody></table>
+		<xf:if is="$endpointState"><div class="block-row"><strong>Endpoint latency</strong></div><table class="dataList ffTable"><tbody><xf:foreach loop="$endpointLatencyRows" value="$row"><tr><td>{$row.endpoint}</td><td>{$row.latency}<xf:if is="$row.is_preferred"> <span class="u-muted">(preferred)</span></xf:if></td></tr></xf:foreach></tbody></table></xf:if>
+	</div></details>
+
+	<details class="ffCard ffMaintenance"><summary><span><strong>About</strong><small>Configuration and protection options.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>Use <a href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}">Forum Fortress settings</a> for API configuration and protection options. This page covers status, portal access, attack mode, connection tests, and endpoint health.</p></div></details>
+</div></div>]]></template>
+</templates>

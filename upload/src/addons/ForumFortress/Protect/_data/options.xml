@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<options>
+  <option option_id="ffProtectAllowGlobalFallback" edit_format="onoff" data_type="boolean" advanced="0">
+    <default_value>0</default_value>
+    <relation group_id="ffProtect" display_order="21"/>
+  </option>
+  <option option_id="ffProtectApiBaseUrl" edit_format="textbox" data_type="string" advanced="1">
+    <default_value>https://api.ffapi.net</default_value>
+  </option>
+  <option option_id="ffProtectApiKey" edit_format="textbox" data_type="string" advanced="0">
+    <default_value></default_value>
+    <relation group_id="ffProtect" display_order="70"/>
+  </option>
+  <option option_id="ffProtectApiRegion" edit_format="select" data_type="string" advanced="0">
+    <default_value>global</default_value>
+    <edit_format_params>global=Global - Recommended
+uk=United Kingdom only
+eu=European Union only
+us=United States only</edit_format_params>
+    <relation group_id="ffProtect" display_order="20"/>
+  </option>
+  <option option_id="ffProtectBlockRejectAction" edit_format="radio" data_type="string" advanced="0">
+    <default_value>reject</default_value>
+    <edit_format_params>reject=Reject content (delete from approval queue)
+spam_clean=Spam clean (mark user/content as spam)</edit_format_params>
+    <relation group_id="ffProtect" display_order="66"/>
+  </option>
+  <option option_id="ffProtectControlBaseUrl" edit_format="textbox" data_type="string" advanced="0">
+    <default_value>https://control.ffapi.net</default_value>
+    <relation group_id="ffProtect" display_order="25"/>
+  </option>
+  <option option_id="ffProtectDebugLog" edit_format="onoff" data_type="boolean" advanced="0">
+    <default_value>0</default_value>
+    <relation group_id="ffProtect" display_order="50"/>
+  </option>
+  <option option_id="ffProtectEnabled" edit_format="onoff" data_type="boolean" advanced="0">
+    <default_value>1</default_value>
+    <relation group_id="ffProtect" display_order="10"/>
+  </option>
+  <option option_id="ffProtectEndpointState" edit_format="textbox" data_type="string" advanced="1">
+    <default_value>{}</default_value>
+  </option>
+  <option option_id="ffProtectFailOpen" edit_format="onoff" data_type="boolean" advanced="0">
+    <default_value>1</default_value>
+    <relation group_id="ffProtect" display_order="40"/>
+  </option>
+  <option option_id="ffProtectPreferredEndpoint" edit_format="textbox" data_type="string" advanced="1">
+    <default_value></default_value>
+  </option>
+  <option option_id="ffProtectRegistrationBlockMode" edit_format="radio" data_type="string" advanced="0">
+    <default_value>rejected_keep</default_value>
+    <edit_format_params>rejected_keep=Keep blocked users as Rejected in XenForo
+auto_delete=Auto-delete blocked users after XenForo rejects them</edit_format_params>
+    <relation group_id="ffProtect" display_order="65"/>
+  </option>
+  <option option_id="ffProtectSendHam" edit_format="onoff" data_type="boolean" advanced="0">
+    <default_value>1</default_value>
+    <relation group_id="ffProtect" display_order="60"/>
+  </option>
+  <option option_id="ffProtectSiteId" edit_format="textbox" data_type="string" advanced="0">
+    <default_value></default_value>
+    <relation group_id="ffProtect" display_order="80"/>
+  </option>
+  <option option_id="ffProtectTimeout" edit_format="spinbox" data_type="positive_integer" advanced="0">
+    <default_value>5</default_value>
+    <edit_format_params>min=1
+max=30
+units=seconds</edit_format_params>
+    <relation group_id="ffProtect" display_order="30"/>
+  </option>
+</options>

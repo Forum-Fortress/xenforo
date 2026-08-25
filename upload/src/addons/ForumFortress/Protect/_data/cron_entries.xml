@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<cron_entries>
+  <cron_entry entry_id="ffProtectHourlySync" cron_class="ForumFortress\Protect\Cron\HourlySync" cron_method="run" addon_id="ForumFortress/Protect" active="1">
+    <run_rules><![CDATA[{"day_type":"dow","dow":[0,1,2,3,4,5,6],"hours":[-1],"minutes":[0,10,20,30,40,50]}]]></run_rules>
+  </cron_entry>
+  <cron_entry entry_id="ffProtectModerationSync" cron_class="ForumFortress\Protect\Cron\ModerationSync" cron_method="run" addon_id="ForumFortress/Protect" active="1">
+    <run_rules><![CDATA[{"day_type":"dow","dow":[0,1,2,3,4,5,6],"hours":[-1],"minutes":[2,7,12,17,22,27,32,37,42,47,52,57]}]]></run_rules>
+  </cron_entry>
+  <cron_entry entry_id="ffProtectEndpointCatalog" cron_class="ForumFortress\Protect\Cron\EndpointCatalogRefresh" cron_method="run" addon_id="ForumFortress/Protect" active="1">
+    <run_rules><![CDATA[{"day_type":"dow","dow":[0,1,2,3,4,5,6],"hours":[0,4,8,12,16,20],"minutes":[15]}]]></run_rules>
+  </cron_entry>
+</cron_entries>

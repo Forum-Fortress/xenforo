@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<code_event_listeners>
+  <listener event_id="spam_content_providers" execute_order="10" callback_class="ForumFortress\Protect\Listener" callback_method="addContentProvider" active="1" description="Adds Forum Fortress content spam provider"/>
+  <listener event_id="spam_content_submitter" execute_order="10" callback_class="ForumFortress\Protect\Listener" callback_method="addContentSubmitter" active="1" description="Adds Forum Fortress content spam submitter"/>
+  <listener event_id="spam_content_submitter_ham" execute_order="10" callback_class="ForumFortress\Protect\Listener" callback_method="addContentHamSubmitter" active="1" description="Adds Forum Fortress content ham submitter"/>
+  <listener event_id="spam_user_providers" execute_order="10" callback_class="ForumFortress\Protect\Listener" callback_method="addUserProvider" active="1" description="Adds Forum Fortress user spam provider"/>
+  <listener event_id="spam_user_submitter" execute_order="10" callback_class="ForumFortress\Protect\Listener" callback_method="addUserSubmitter" active="1" description="Adds Forum Fortress user spam submitter"/>
+</code_event_listeners>

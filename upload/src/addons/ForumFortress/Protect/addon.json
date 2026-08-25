@@ -1,0 +1,17 @@
+{
+  "legacy_addon_id": "",
+  "title": "ForumFortress",
+  "description": "Integrates XenForo with the ForumFortress anti-spam API for registration, content, profile, and signature checks.",
+  "version_id": 1800500,
+  "version_string": "1.8.5",
+  "dev": "ForumFortress",
+  "dev_url": "https://forumfortress.com",
+  "faq_url": "",
+  "support_url": "",
+  "extra_urls": [],
+  "require": {
+    "XF": [2030070, "XenForo 2.3.0+"],
+    "php": ["8.0.0", "PHP 8.0.0+"]
+  },
+  "icon": "icon.png"
+}
