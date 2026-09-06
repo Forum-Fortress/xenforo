@@ -12,7 +12,7 @@
     "src/addons/ForumFortress/Protect/Service/ApiClient.php": "2ab4cc015ae6d07b76361264f606a8bc84e9871f6af94f2dc36480bf57f72298",
     "src/addons/ForumFortress/Protect/Service/ApprovalQueueSpamTrigger.php": "be11c50689e7bc474c0283b4a44cddbafe95a738bdf7771bf85bc4a357319a55",
     "src/addons/ForumFortress/Protect/Service/DecisionMapper.php": "57d4ecef025ea6265f7e50742e5f0a9f0d6b49c0bc8b76bd9acf44fb492ed0bd",
-    "src/addons/ForumFortress/Protect/Service/FfApiResilience.php": "a45ef005cb41987f263c371b1f0b1fef03270ef5f881cc3271ebe451129561f1",
+    "src/addons/ForumFortress/Protect/Service/FfApiResilience.php": "af1d379b8e9adbdc094489c233a8081afb378fc51170a728b5a88faff66942c1",
     "src/addons/ForumFortress/Protect/Service/ModerationBridge.php": "9416aaf47fc27a8806754e3ad3803e5f9cf00663f10dfb8d1f3227c791ea7db5",
     "src/addons/ForumFortress/Protect/Service/TimeoutApprovalMirror.php": "3944b5a2b99572db335fcc1ca571df5a37808b6cdf08929e952867f7f161d441",
     "src/addons/ForumFortress/Protect/Setup.php": "1ebda49199b3ebd7095e2159318390821730dc32babd7ec613bf236e10c47c2b",
