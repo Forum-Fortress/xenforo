@@ -25,10 +25,6 @@ us=United States only</edit_format_params>
 spam_clean=Spam clean (mark user/content as spam)</edit_format_params>
     <relation group_id="ffProtect" display_order="66"/>
   </option>
-  <option option_id="ffProtectControlBaseUrl" edit_format="textbox" data_type="string" advanced="0">
-    <default_value>https://control.ffapi.net</default_value>
-    <relation group_id="ffProtect" display_order="25"/>
-  </option>
   <option option_id="ffProtectDebugLog" edit_format="onoff" data_type="boolean" advanced="0">
     <default_value>0</default_value>
     <relation group_id="ffProtect" display_order="50"/>

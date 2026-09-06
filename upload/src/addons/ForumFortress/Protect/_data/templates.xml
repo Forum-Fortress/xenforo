@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <templates>
-  <template type="admin" title="ff_protect_overview" version_id="1800400" version_string="1.8.4"><![CDATA[<xf:title>Forum Fortress</xf:title>
+  <template type="admin" title="ff_protect_overview" version_id="1801000" version_string="1.8.10"><![CDATA[<xf:title>Forum Fortress</xf:title>
 
 <style>
 .ffDashboard { padding-top: 24px; }
@@ -65,7 +65,7 @@
 			<div class="ffMetric {{ $siteStatus ? 'is-good' : '' }}"><span>Connection</span><strong>{{ $siteStatus ? 'Connected' : 'Not checked' }}</strong></div>
 			<div class="ffMetric"><span>Plan</span><strong><xf:if is="$siteStatus">{$siteStatus.plan}<xf:else />Unknown</xf:if></strong></div>
 			<div class="ffMetric"><span>Site ID</span><strong><xf:if is="$siteId">{$siteId}<xf:else />Not set</xf:if></strong></div>
-			<div class="ffMetric"><span>Preferred endpoint</span><strong><xf:if is="$preferredEndpoint">{$preferredEndpoint}<xf:else />Unknown</xf:if></strong></div>
+			<div class="ffMetric"><span>GeoDNS route</span><strong><xf:if is="$preferredEndpoint">{$preferredEndpoint}<xf:else />Unknown</xf:if></strong></div>
 			<div class="ffMetric"><span>Attack mode</span><strong><xf:if is="$siteStatus">{{ $siteStatus.attack_mode_active ? 'Active' : 'Inactive' }}<xf:else />Unknown</xf:if></strong></div>
 			<div class="ffMetric"><span>Checks this month</span><strong><xf:if is="$forumStats">{$forumStats.current_month_checks}<xf:else />Unknown</xf:if></strong></div>
 			<div class="ffMetric"><span>Decisions</span><strong><xf:if is="$forumStats">{$forumStats.allows} allowed / {$forumStats.blocks} blocked<xf:else />Unknown</xf:if></strong></div>
@@ -76,9 +76,9 @@
 
 	<details class="ffCard ffMaintenance ffDiagnostics"><summary>Diagnostics and endpoint health <i class="fa--xf far fa-chevron-down"></i></summary><div class="block-body">
 		<table class="dataList ffTable"><tbody>
-			<tr><td>API base URL</td><td>{$apiBaseUrl}</td></tr><tr><td>Stored API key</td><td><xf:if is="$apiKeyMasked">{$apiKeyMasked}<xf:else />Not set</xf:if></td></tr><tr><td>Domain</td><td>{$domain}</td></tr><tr><td>Preferred endpoint missing</td><td><xf:if is="$preferredMissingEndpoint">{$preferredMissingEndpoint}<xf:else />No</xf:if></td></tr><tr><td>Test answered by endpoint</td><td><xf:if is="$result && $result.answered_endpoint">{$result.answered_endpoint}<xf:elseif is="$lastRespondedEndpoint" />{$lastRespondedEndpoint}<xf:else />Unknown</xf:if></td></tr><tr><td>Forum last synced</td><td><xf:if is="$endpointState && $endpointState.last_site_ping_at">{{ date($endpointState.last_site_ping_at, 'Y-m-d H:i:s') }} UTC<xf:else />Unknown</xf:if></td></tr><tr><td>Last endpoint health check</td><td><xf:if is="$endpointState && $endpointState.last_health_at">{{ date($endpointState.last_health_at, 'Y-m-d H:i:s') }} UTC<xf:else />Unknown</xf:if></td></tr><tr><td>Last API failover</td><td><xf:if is="$endpointState && $endpointState.last_failure">{$endpointState.last_failure.reason} on {$endpointState.last_failure.path} via {$endpointState.last_failure.base}<xf:else />None</xf:if></td></tr><tr><td>Dataset version</td><td><xf:if is="$siteStatus && $siteStatus.dataset_version">{$siteStatus.dataset_version}<xf:else />Unknown</xf:if></td></tr>
+			<tr><td>API base URL</td><td>{$apiBaseUrl}</td></tr><tr><td>Stored API key</td><td><xf:if is="$apiKeyMasked">{$apiKeyMasked}<xf:else />Not set</xf:if></td></tr><tr><td>Domain</td><td>{$domain}</td></tr><tr><td>Test answered by endpoint</td><td><xf:if is="$result && $result.answered_endpoint">{$result.answered_endpoint}<xf:elseif is="$lastRespondedEndpoint" />{$lastRespondedEndpoint}<xf:else />Unknown</xf:if></td></tr><tr><td>Forum last synced</td><td><xf:if is="$endpointState && $endpointState.last_site_ping_at">{{ date($endpointState.last_site_ping_at, 'Y-m-d H:i:s') }} UTC<xf:else />Unknown</xf:if></td></tr><tr><td>Last API failover</td><td><xf:if is="$endpointState && $endpointState.last_failure">{$endpointState.last_failure.reason} on {$endpointState.last_failure.path} via {$endpointState.last_failure.base}<xf:else />None</xf:if></td></tr><tr><td>Dataset version</td><td><xf:if is="$siteStatus && $siteStatus.dataset_version">{$siteStatus.dataset_version}<xf:else />Unknown</xf:if></td></tr>
 		</tbody></table>
-		<xf:if is="$endpointState"><div class="block-row"><strong>Endpoint latency</strong></div><table class="dataList ffTable"><tbody><xf:foreach loop="$endpointLatencyRows" value="$row"><tr><td>{$row.endpoint}</td><td>{$row.latency}<xf:if is="$row.is_preferred"> <span class="u-muted">(preferred)</span></xf:if></td></tr></xf:foreach></tbody></table></xf:if>
+		<xf:if is="$endpointState"><div class="block-row"><strong>Fallback endpoint catalog</strong></div><table class="dataList ffTable"><tbody><xf:foreach loop="$endpointLatencyRows" value="$row"><tr><td>{$row.endpoint}</td><td>{$row.latency}<xf:if is="$row.is_preferred"> <span class="u-muted">(GeoDNS primary)</span></xf:if></td></tr></xf:foreach></tbody></table></xf:if>
 	</div></details>
 
 	<details class="ffCard ffMaintenance"><summary><span><strong>About</strong><small>Configuration and protection options.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>Use <a href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}">Forum Fortress settings</a> for API configuration and protection options. This page covers status, portal access, attack mode, connection tests, and endpoint health.</p></div></details>

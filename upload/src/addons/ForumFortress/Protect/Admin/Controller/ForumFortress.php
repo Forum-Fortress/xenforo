@@ -155,7 +155,7 @@ class ForumFortress extends AbstractController
 	protected function candidatePortalHosts(ApiClient $client): array
 	{
 		$hosts = [];
-		foreach ([$client->getStringOption('ffProtectApiBaseUrl'), $client->getStringOption('ffProtectControlBaseUrl')] as $candidate)
+		foreach ([$client->getStringOption('ffProtectApiBaseUrl'), ApiClient::CONTROL_PLANE_BASE_URL] as $candidate)
 		{
 			$derived = $this->derivePortalHost((string) $candidate);
 			if ($derived !== '')
@@ -192,6 +192,10 @@ class ForumFortress extends AbstractController
 		if (str_starts_with($host, 'control.'))
 		{
 			return 'portal.' . substr($host, 8);
+		}
+		if ($host === 'fortress.ffapi.net')
+		{
+			return 'portal.ffapi.net';
 		}
 		return $host;
 	}

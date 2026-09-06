@@ -14,7 +14,6 @@
   <phrase title="option.ffProtectApiKey" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Stored API key]]></phrase>
   <phrase title="option.ffProtectApiRegion" version_id="1402200" version_string="1.4.22"><![CDATA[API region]]></phrase>
   <phrase title="option.ffProtectBlockRejectAction" version_id="1401700" version_string="1.4.17"><![CDATA[Block/reject action in XenForo]]></phrase>
-  <phrase title="option.ffProtectControlBaseUrl" version_id="1401600" version_string="1.4.16"><![CDATA[Control plane base URL]]></phrase>
   <phrase title="option.ffProtectDebugLog" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Enable debug logging]]></phrase>
   <phrase title="option.ffProtectEnabled" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Enable Forum Fortress]]></phrase>
   <phrase title="option.ffProtectEndpointState" version_id="1300070" version_string="1.3.0 RC 1"><![CDATA[API endpoint routing state (internal)]]></phrase>
@@ -33,12 +32,11 @@
   <phrase title="option_explain.ffProtectApiKey" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Automatically populated after anonymous bootstrap or registration. You normally do not need to edit this manually.]]></phrase>
   <phrase title="option_explain.ffProtectApiRegion" version_id="1402200" version_string="1.4.22"><![CDATA[Lock check traffic to a region, or use the recommended global network.]]></phrase>
   <phrase title="option_explain.ffProtectBlockRejectAction" version_id="1401700" version_string="1.4.17"><![CDATA[When Forum Fortress rejects content through synced moderation actions, choose whether XenForo should delete the item from the approval queue or run a spam clean on the author.]]></phrase>
-  <phrase title="option_explain.ffProtectControlBaseUrl" version_id="1401600" version_string="1.4.16"><![CDATA[Bootstrap, the /v1/node-endpoints catalog, plugin release, and capabilities use this host (for example https://control.ffapi.net).]]></phrase>
   <phrase title="option_explain.ffProtectDebugLog" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Write Forum Fortress API and decision details into the XenForo log.]]></phrase>
   <phrase title="option_explain.ffProtectEnabled" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Turns Forum Fortress checks on or off.]]></phrase>
-  <phrase title="option_explain.ffProtectEndpointState" version_id="1402000" version_string="1.4.20"><![CDATA[Internal JSON cache (endpoint catalog and health timings). Updated automatically by the add-on; use Connection test to refresh. Not shown on the settings screen.]]></phrase>
+  <phrase title="option_explain.ffProtectEndpointState" version_id="1801000" version_string="1.8.10"><![CDATA[Internal fallback endpoint catalog. Normal requests always start at the GeoDNS route. Not shown on the settings screen.]]></phrase>
   <phrase title="option_explain.ffProtectFailOpen" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[If enabled, users are allowed through when the Forum Fortress API cannot be reached.]]></phrase>
-  <phrase title="option_explain.ffProtectPreferredEndpoint" version_id="1401000" version_string="1.4.10"><![CDATA[Optional manual endpoint override, for example https://eu-west1.ffapi.net. Leave blank to auto-select from endpoint health checks.]]></phrase>
+  <phrase title="option_explain.ffProtectPreferredEndpoint" version_id="1801000" version_string="1.8.10"><![CDATA[Legacy compatibility value. Normal requests use the selected GeoDNS hostname and fail back to it on the next request.]]></phrase>
   <phrase title="option_explain.ffProtectRegistrationBlockMode" version_id="1400200" version_string="1.4.2"><![CDATA[Choose what happens when Forum Fortress returns a block decision for registration checks.]]></phrase>
   <phrase title="option_explain.ffProtectSendHam" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Send false-positive approvals back to Forum Fortress when XenForo marks cached spam content as ham.]]></phrase>
   <phrase title="option_explain.ffProtectSiteId" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Automatically populated by Forum Fortress and reused across checks.]]></phrase>
