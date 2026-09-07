@@ -12,7 +12,7 @@ use function array_merge, array_values, array_unique, array_map, array_filter, b
 class ApiClient
 {
 	public const PLATFORM = 'xenforo';
-	public const PLUGIN_VERSION = '1.8.10';
+	public const PLUGIN_VERSION = '1.8.11';
 	public const CONTROL_PLANE_BASE_URL = 'https://fortress.ffapi.net';
 	/** Add-on id string; must match {@see Setup::ADD_ON_ID} for simpleCache keys. */
 	protected const ADDON_ID_FOR_CACHE = 'ForumFortress/Protect';

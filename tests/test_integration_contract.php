@@ -45,8 +45,8 @@ function assertContract(bool $condition, string $message): void
 $addOnRoot = dirname(__DIR__) . '/upload/src/addons/ForumFortress/Protect';
 
 $addOn = json_decode((string) file_get_contents($addOnRoot . '/addon.json'), true, 512, JSON_THROW_ON_ERROR);
-assertContract(($addOn['version_id'] ?? null) === 1801000, 'add-on version_id must be 1801000');
-assertContract(($addOn['version_string'] ?? null) === '1.8.10', 'add-on version_string must be 1.8.10');
+assertContract(($addOn['version_id'] ?? null) === 1801100, 'add-on version_id must be 1801100');
+assertContract(($addOn['version_string'] ?? null) === '1.8.11', 'add-on version_string must be 1.8.11');
 assertContract(($addOn['require']['XF'][0] ?? null) === 2030070, 'stable XenForo 2.3.0 minimum must be declared');
 assertContract(($addOn['require']['php'][0] ?? null) === '8.0.0', 'PHP 8.0 minimum must be declared');
 $apiClientSource = (string) file_get_contents($addOnRoot . '/Service/ApiClient.php');
