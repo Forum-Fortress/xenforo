@@ -3,16 +3,15 @@
 namespace ForumFortress\Protect\Cron;
 
 use ForumFortress\Protect\Service\ApiClient;
-use XF\Entity\CronEntry;
 
 class ModerationSync
 {
 	/**
 	 * Pull Forum Fortress moderation actions and push the XenForo approval queue on a fixed cadence.
 	 *
-	 * @param CronEntry $_entry
+	 * @param mixed $_entry XenForo passes an entity for scheduled runs and an array for manual runs.
 	 */
-	public static function run(CronEntry $_entry): void
+	public static function run($_entry): void
 	{
 		SyncLock::run(static function (): void
 		{

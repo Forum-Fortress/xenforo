@@ -2,6 +2,8 @@
 <phrases>
   <phrase title="admin_navigation.ffProtect" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Forum Fortress]]></phrase>
   <phrase title="admin_permission.ffProtect" version_id="1800400" version_string="1.8.4"><![CDATA[Manage Forum Fortress]]></phrase>
+  <phrase title="cron_entry.ffProtectHourlySync" version_id="1801400" version_string="1.8.14"><![CDATA[Forum Fortress: Heartbeat and protection sync]]></phrase>
+  <phrase title="cron_entry.ffProtectModerationSync" version_id="1801400" version_string="1.8.14"><![CDATA[Forum Fortress: Synchronize moderation queue]]></phrase>
   <phrase title="ff_above_limit" version_id="1402100" version_string="1.4.21"><![CDATA[Forum Fortress limits are exceeded for this site. Complete registration in the Forum Fortress portal or enable attack mode.]]></phrase>
   <phrase title="ff_api_request_failed" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Forum Fortress API request failed.]]></phrase>
   <phrase title="ff_no_response" version_id="1800400" version_string="1.8.4"><![CDATA[No response was returned by the API.]]></phrase>
@@ -16,9 +18,8 @@
   <phrase title="option.ffProtectBlockRejectAction" version_id="1401700" version_string="1.4.17"><![CDATA[Block/reject action in XenForo]]></phrase>
   <phrase title="option.ffProtectDebugLog" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Enable debug logging]]></phrase>
   <phrase title="option.ffProtectEnabled" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Enable Forum Fortress]]></phrase>
-  <phrase title="option.ffProtectEndpointState" version_id="1300070" version_string="1.3.0 RC 1"><![CDATA[API endpoint routing state (internal)]]></phrase>
+  <phrase title="option.ffProtectEndpointState" version_id="1900000" version_string="1.9.0"><![CDATA[Legacy API runtime state (internal)]]></phrase>
   <phrase title="option.ffProtectFailOpen" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Fail open on API error]]></phrase>
-  <phrase title="option.ffProtectPreferredEndpoint" version_id="1401000" version_string="1.4.10"><![CDATA[Preferred API endpoint]]></phrase>
   <phrase title="option.ffProtectRegistrationBlockMode" version_id="1400200" version_string="1.4.2"><![CDATA[Blocked registration handling]]></phrase>
   <phrase title="option.ffProtectSendHam" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Submit ham feedback]]></phrase>
   <phrase title="option.ffProtectSiteId" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Stored site ID]]></phrase>
@@ -27,16 +28,15 @@
   <phrase title="option_choice.ffProtectBlockRejectAction_spam_clean" version_id="1401700" version_string="1.4.17"><![CDATA[Spam clean (mark user/content as spam)]]></phrase>
   <phrase title="option_choice.ffProtectRegistrationBlockMode_auto_delete" version_id="1400300" version_string="1.4.3"><![CDATA[Auto-delete blocked users after XenForo rejects them]]></phrase>
   <phrase title="option_choice.ffProtectRegistrationBlockMode_rejected_keep" version_id="1400300" version_string="1.4.3"><![CDATA[Keep blocked users as Rejected in XenForo]]></phrase>
-  <phrase title="option_explain.ffProtectAllowGlobalFallback" version_id="1402200" version_string="1.4.22"><![CDATA[After a regional retry fails, permit the global network. Processing may occur outside the selected region.]]></phrase>
-  <phrase title="option_explain.ffProtectApiBaseUrl" version_id="1401600" version_string="1.4.16"><![CDATA[Public API hostname (for example https://api.ffapi.net). Check requests are sent to healthy edge bases from /v1/node-endpoints; the shared api.* hostname is not used as a check failover when it targets the control plane.]]></phrase>
+  <phrase title="option_explain.ffProtectAllowGlobalFallback" version_id="1900000" version_string="1.9.0"><![CDATA[For a non-global region, retry through api.ffapi.net and then fortress.ffapi.net if the selected regional endpoint is unavailable. Processing may occur outside the selected region. Global mode always uses api.ffapi.net with fortress.ffapi.net as its fallback.]]></phrase>
+  <phrase title="option_explain.ffProtectApiBaseUrl" version_id="1900000" version_string="1.9.0"><![CDATA[Legacy compatibility value. API routing is controlled by the selected API region.]]></phrase>
   <phrase title="option_explain.ffProtectApiKey" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Automatically populated after anonymous bootstrap or registration. You normally do not need to edit this manually.]]></phrase>
-  <phrase title="option_explain.ffProtectApiRegion" version_id="1402200" version_string="1.4.22"><![CDATA[Lock check traffic to a region, or use the recommended global network.]]></phrase>
+  <phrase title="option_explain.ffProtectApiRegion" version_id="1900000" version_string="1.9.0"><![CDATA[Choose the primary API route. Global uses api.ffapi.net; regional choices use only that region unless global fallback is enabled.]]></phrase>
   <phrase title="option_explain.ffProtectBlockRejectAction" version_id="1401700" version_string="1.4.17"><![CDATA[When Forum Fortress rejects content through synced moderation actions, choose whether XenForo should delete the item from the approval queue or run a spam clean on the author.]]></phrase>
   <phrase title="option_explain.ffProtectDebugLog" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Write Forum Fortress API and decision details into the XenForo log.]]></phrase>
   <phrase title="option_explain.ffProtectEnabled" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Turns Forum Fortress checks on or off.]]></phrase>
-  <phrase title="option_explain.ffProtectEndpointState" version_id="1801000" version_string="1.8.10"><![CDATA[Internal fallback endpoint catalog. Normal requests always start at the GeoDNS route. Not shown on the settings screen.]]></phrase>
+  <phrase title="option_explain.ffProtectEndpointState" version_id="1900000" version_string="1.9.0"><![CDATA[Retained only to migrate runtime state from older releases. New runtime state is stored in XenForo's simple cache.]]></phrase>
   <phrase title="option_explain.ffProtectFailOpen" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[If enabled, users are allowed through when the Forum Fortress API cannot be reached.]]></phrase>
-  <phrase title="option_explain.ffProtectPreferredEndpoint" version_id="1801000" version_string="1.8.10"><![CDATA[Legacy compatibility value. Normal requests use the selected GeoDNS hostname and fail back to it on the next request.]]></phrase>
   <phrase title="option_explain.ffProtectRegistrationBlockMode" version_id="1400200" version_string="1.4.2"><![CDATA[Choose what happens when Forum Fortress returns a block decision for registration checks.]]></phrase>
   <phrase title="option_explain.ffProtectSendHam" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Send false-positive approvals back to Forum Fortress when XenForo marks cached spam content as ham.]]></phrase>
   <phrase title="option_explain.ffProtectSiteId" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Automatically populated by Forum Fortress and reused across checks.]]></phrase>

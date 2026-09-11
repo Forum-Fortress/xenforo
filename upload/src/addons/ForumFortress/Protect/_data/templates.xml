@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <templates>
-  <template type="admin" title="ff_protect_overview" version_id="1801000" version_string="1.8.10"><![CDATA[<xf:title>Forum Fortress</xf:title>
+  <template type="admin" title="ff_protect_overview" version_id="1900000" version_string="1.9.0"><![CDATA[<xf:title>Forum Fortress</xf:title>
 
 <style>
 .ffDashboard { padding-top: 24px; }
@@ -40,10 +40,10 @@
 		<div class="ffHeroHeader">
 			<div class="ffMark" aria-hidden="true"><i></i><i></i><i></i></div>
 			<div class="ffHeroCopy"><strong>Forum Fortress</strong><span>Protection status, controls, and account links.</span></div>
-			<span class="ffPill {{ $siteStatus ? 'is-connected' : '' }}">{{ $siteStatus ? 'Connected' : ($enabled ? 'Configured' : 'Not checked') }}</span>
+			<span class="ffPill {{ $connectionHealthy ? 'is-connected' : '' }}">{{ $connectionHealthy ? 'Connected' : ($enabled ? 'Needs check' : 'Disabled') }}</span>
 		</div>
 		<div class="ffActionGrid">
-			<xf:if is="$siteId && $apiKeyMasked"><xf:form action="{{ link('forum-fortress/portal') }}" ajax="false" target="_blank"><xf:button type="submit" class="button--primary button--large ffButton ffButton--portal">Portal Login</xf:button></xf:form><xf:else /><xf:button class="button--primary button--large ffButton ffButton--portal" disabled="true">Portal Login</xf:button></xf:if>
+			<xf:if is="$siteId && $apiKeyMasked"><xf:form action="{{ link('forum-fortress/portal') }}" ajax="false" target="_blank"><xf:button type="submit" class="button--primary button--large ffButton ffButton--portal">Open Forum Fortress</xf:button></xf:form><xf:else /><xf:button class="button--primary button--large ffButton ffButton--portal" disabled="true">Open Forum Fortress</xf:button></xf:if>
 			<xf:form action="{{ link('forum-fortress/test') }}" ajax="false"><xf:button type="submit" class="button--primary button--large ffButton">Connection test</xf:button></xf:form>
 			<xf:if is="$siteId"><xf:if is="$siteStatus && $siteStatus.attack_mode_active"><xf:form action="{{ link('forum-fortress/attack-mode-end') }}" ajax="false"><xf:button type="submit" class="button--link button--large ffButton">End attack mode</xf:button></xf:form><xf:else /><xf:form action="{{ link('forum-fortress/attack-mode') }}" ajax="false"><xf:button type="submit" class="button--cta button--large ffButton ffButton--attack">Enable attack mode</xf:button></xf:form></xf:if><xf:else /><xf:button class="button--cta button--large ffButton ffButton--attack" disabled="true">Enable attack mode</xf:button></xf:if>
 			<xf:button href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}" class="button--link button--large ffButton">Settings</xf:button>
@@ -55,14 +55,14 @@
 		<xf:if is="$attackModeResult"><div class="ffNotice {{ $attackModeResult.error ? 'is-error' : 'is-success' }}"><span><strong>Attack mode:</strong> <xf:if is="$attackModeResult.error">{$attackModeResult.error}<xf:elseif is="$attackModeResult.status == 'ok'" /><xf:if is="$attackModeResult.attack_mode_active">Attack mode is active.<xf:else />Attack mode has ended.</xf:if><xf:else />No response was returned by the API.</xf:if></span></div></xf:if>
 		<xf:if is="$registerResult"><div class="ffNotice {{ $registerResult.error ? 'is-error' : 'is-success' }}"><span><strong>Registration:</strong> <xf:if is="$registerResult.error">{$registerResult.error}<xf:elseif is="$registerResult.status == 'ok'" />Registration completed.<xf:else />No response was returned by the API.</xf:if></span></div></xf:if>
 		<xf:if is="$portalResult"><div class="ffNotice is-error"><span><strong>Portal login:</strong> <xf:if is="$portalResult.error">{$portalResult.error}<xf:else />No portal login URL was returned by the API.</xf:if></span></div></xf:if>
-		<xf:if is="$result"><div class="ffNotice {{ $result.error ? 'is-error' : 'is-success' }}"><span><strong>Connection test:</strong> Bootstrap {$result.bootstrap_status}; health {$result.health_status}; capabilities {$result.capabilities_status}; site status {$result.site_status_status}.<xf:if is="$result.error"> {$result.error}</xf:if></span></div></xf:if>
+		<xf:if is="$result"><div class="ffNotice {{ $result.error ? 'is-error' : 'is-success' }}"><span><strong>Connection test:</strong> Bootstrap {$result.bootstrap_status}; heartbeat {$result.site_ping_status}; capabilities {$result.capabilities_status}; site status {$result.site_status_status}.<xf:if is="$result.error"> {$result.error}</xf:if></span></div></xf:if>
 	</xf:if>
 
 	<div class="ffCard">
 		<div class="ffSectionHeader"><div><strong>Site status</strong><span>Current protection and service details.</span></div></div>
 		<div class="ffStatusGrid">
 			<div class="ffMetric {{ $enabled ? 'is-good' : '' }}"><span>Protection</span><strong>{{ $enabled ? 'Enabled' : 'Disabled' }}</strong></div>
-			<div class="ffMetric {{ $siteStatus ? 'is-good' : '' }}"><span>Connection</span><strong>{{ $siteStatus ? 'Connected' : 'Not checked' }}</strong></div>
+			<div class="ffMetric {{ $connectionHealthy ? 'is-good' : '' }}"><span>Connection</span><strong>{{ $connectionHealthy ? 'Connected' : 'Needs check' }}</strong></div>
 			<div class="ffMetric"><span>Plan</span><strong><xf:if is="$siteStatus">{$siteStatus.plan}<xf:else />Unknown</xf:if></strong></div>
 			<div class="ffMetric"><span>Site ID</span><strong><xf:if is="$siteId">{$siteId}<xf:else />Not set</xf:if></strong></div>
 			<div class="ffMetric"><span>GeoDNS route</span><strong><xf:if is="$preferredEndpoint">{$preferredEndpoint}<xf:else />Unknown</xf:if></strong></div>
@@ -74,13 +74,13 @@
 
 	<xf:if is="$siteStatus && $siteStatus.registration_required"><details class="ffCard ffMaintenance" open="open"><summary><span><strong>Complete registration</strong><small>Upgrade the plan and replace the temporary key with a live key.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>This site is currently running in anonymous mode.</p><xf:form action="{{ link('forum-fortress/register') }}" ajax="true"><xf:textboxrow name="registration_email" type="email" required="true" label="Email address" /><xf:submitrow submit="Complete registration" /></xf:form></div></details></xf:if>
 
-	<details class="ffCard ffMaintenance ffDiagnostics"><summary>Diagnostics and endpoint health <i class="fa--xf far fa-chevron-down"></i></summary><div class="block-body">
+	<details class="ffCard ffMaintenance ffDiagnostics"><summary>Diagnostics and API routing <i class="fa--xf far fa-chevron-down"></i></summary><div class="block-body">
 		<table class="dataList ffTable"><tbody>
 			<tr><td>API base URL</td><td>{$apiBaseUrl}</td></tr><tr><td>Stored API key</td><td><xf:if is="$apiKeyMasked">{$apiKeyMasked}<xf:else />Not set</xf:if></td></tr><tr><td>Domain</td><td>{$domain}</td></tr><tr><td>Test answered by endpoint</td><td><xf:if is="$result && $result.answered_endpoint">{$result.answered_endpoint}<xf:elseif is="$lastRespondedEndpoint" />{$lastRespondedEndpoint}<xf:else />Unknown</xf:if></td></tr><tr><td>Forum last synced</td><td><xf:if is="$endpointState && $endpointState.last_site_ping_at">{{ date($endpointState.last_site_ping_at, 'Y-m-d H:i:s') }} UTC<xf:else />Unknown</xf:if></td></tr><tr><td>Last API failover</td><td><xf:if is="$endpointState && $endpointState.last_failure">{$endpointState.last_failure.reason} on {$endpointState.last_failure.path} via {$endpointState.last_failure.base}<xf:else />None</xf:if></td></tr><tr><td>Dataset version</td><td><xf:if is="$siteStatus && $siteStatus.dataset_version">{$siteStatus.dataset_version}<xf:else />Unknown</xf:if></td></tr>
 		</tbody></table>
-		<xf:if is="$endpointState"><div class="block-row"><strong>Fallback endpoint catalog</strong></div><table class="dataList ffTable"><tbody><xf:foreach loop="$endpointLatencyRows" value="$row"><tr><td>{$row.endpoint}</td><td>{$row.latency}<xf:if is="$row.is_preferred"> <span class="u-muted">(GeoDNS primary)</span></xf:if></td></tr></xf:foreach></tbody></table></xf:if>
+		<xf:if is="$endpointState"><div class="block-row"><strong>Request route</strong></div><table class="dataList ffTable"><tbody><xf:foreach loop="$endpointLatencyRows" value="$row"><tr><td>{$row.endpoint}</td><td>{$row.latency}<xf:if is="$row.is_preferred"> <span class="u-muted">(primary)</span></xf:if></td></tr></xf:foreach></tbody></table></xf:if>
 	</div></details>
 
-	<details class="ffCard ffMaintenance"><summary><span><strong>About</strong><small>Configuration and protection options.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>Use <a href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}">Forum Fortress settings</a> for API configuration and protection options. This page covers status, portal access, attack mode, connection tests, and endpoint health.</p></div></details>
+	<details class="ffCard ffMaintenance"><summary><span><strong>About</strong><small>Configuration and protection options.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>Use <a href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}">Forum Fortress settings</a> for API configuration and protection options. This page covers status, portal access, attack mode, connection tests, and API routing.</p></div></details>
 </div></div>]]></template>
 </templates>

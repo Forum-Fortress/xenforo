@@ -3,16 +3,16 @@
 namespace ForumFortress\Protect\Cron;
 
 use ForumFortress\Protect\Service\ApiClient;
-use XF\Entity\CronEntry;
 
 class HourlySync
 {
 	/**
-	 * XenForo invokes cron callbacks with the {@see CronEntry} as the first argument.
+	 * XenForo passes a CronEntry entity during scheduled execution and an array
+	 * when an administrator runs the entry manually.
 	 *
-	 * @param CronEntry $entry
+	 * @param mixed $_entry
 	 */
-	public static function run(CronEntry $_entry): void
+	public static function run($_entry): void
 	{
 		SyncLock::run(static function (): void
 		{

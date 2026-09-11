@@ -3,17 +3,7 @@
  * Copyright (c) 2026 Marscastle Ltd trading as Forum Fortress
  * SPDX-License-Identifier: GPL-2.0-or-later
  *
- * Shared Forum Fortress API resilience helpers (bootstrap / catalog / hot failover).
- *
- * Copied into XenForo, phpBB, Invision, and SMF plugin trees on release; keep copies in sync.
- *
- * Manual verification matrix (when changing this file):
- * - fortress.ffapi.net down: bootstrap succeeds via api.ffapi.net or edge /v1/node-endpoints + edge bootstrap
- * - GeoDNS attempt down: check retries catalog edges without changing the next request's primary
- * - capabilities: control -> api.ffapi.net -> edge bases
- * - normal requests start at GeoDNS; catalog entries are same-request fallbacks only
- * - offline ff_ob_* keys: checks pinned to issuer preferred_endpoint until control returns normal key
- * - POST /v1/check/*: GeoDNS first; control is used only when the catalog allows fallback
+ * Deterministic Forum Fortress API routing and retry helpers for XenForo.
  */
 declare(strict_types=1);
 
@@ -22,6 +12,14 @@ final class FfApiResilience
 	public const OFFLINE_TOKEN_PREFIX = 'ff_ob_';
 	public const DEFAULT_API_REGION = 'global';
 	public const GLOBAL_API_BASE_URL = 'https://api.ffapi.net';
+	public const RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS = 1;
+	public const RUNTIME_CHECK_TOTAL_BUDGET_SECONDS = 5;
+	public const CONTACT_PAGE_MIN_TIMEOUT_SECONDS = 6;
+	public const CONTACT_PAGE_MAX_TIMEOUT_SECONDS = 12;
+	public const API_TIMEOUT_LOG_THROTTLE_SECONDS = 300;
+	public const CONSECUTIVE_TRANSIENT_LOG_THRESHOLD = 3;
+	public const ENDPOINT_CATALOG_TTL_SECONDS = 14400;
+
 	private const API_REGION_BASE_URLS = [
 		'global' => self::GLOBAL_API_BASE_URL,
 		'uk' => 'https://api-uk.ffapi.net',
@@ -50,7 +48,13 @@ final class FfApiResilience
 				return $region;
 			}
 		}
+
 		return self::DEFAULT_API_REGION;
+	}
+
+	public static function apiRegionIsLocked(?string $region): bool
+	{
+		return self::normaliseApiRegion($region) !== self::DEFAULT_API_REGION;
 	}
 
 	/** @return list<string> */
@@ -64,27 +68,6 @@ final class FfApiResilience
 		);
 	}
 
-	public static function apiRegionIsLocked(?string $region): bool
-	{
-		return self::normaliseApiRegion($region) !== self::DEFAULT_API_REGION;
-	}
-
-	public static function isLocalDevelopmentBaseUrl(?string $baseUrl): bool
-	{
-		$host = strtolower((string) parse_url(self::normaliseBaseUrl((string) $baseUrl), PHP_URL_HOST));
-		return in_array($host, ['localhost', '127.0.0.1', '::1'], true);
-	}
-
-	/** Default TTL before GET /v1/node-endpoints is refreshed (4 hours). */
-	public const ENDPOINT_CATALOG_TTL_SECONDS = 14400;
-
-	/** Back off catalog discovery after failure to avoid hammering control. */
-	public const ENDPOINT_CATALOG_REFRESH_BACKOFF_SECONDS = 300;
-
-	public const ENDPOINT_CATALOG_FAILED_AT_KEY = 'catalog_refresh_failed_at';
-	public const RUNTIME_CHECK_ENDPOINT_TIMEOUT_SECONDS = 1;
-	public const RUNTIME_CHECK_TOTAL_BUDGET_SECONDS = 5;
-
 	public static function normaliseBaseUrl(string $value): string
 	{
 		$value = rtrim(trim($value), '/');
@@ -92,24 +75,21 @@ final class FfApiResilience
 		if (!is_array($parts)
 			|| strtolower((string) ($parts['scheme'] ?? '')) !== 'https'
 			|| trim((string) ($parts['host'] ?? '')) === ''
-			|| isset($parts['user']) || isset($parts['pass'])
-			|| isset($parts['query']) || isset($parts['fragment']))
+			|| isset($parts['user'])
+			|| isset($parts['pass'])
+			|| isset($parts['query'])
+			|| isset($parts['fragment']))
 		{
 			return '';
 		}
+
 		return $value;
 	}
 
 	public static function normaliseDomain(string $domain): string
 	{
-		$domain = strtolower(trim($domain));
-		$domain = rtrim($domain, '.');
-		if (str_starts_with($domain, 'www.'))
-		{
-			$domain = substr($domain, 4);
-		}
-
-		return $domain;
+		$domain = strtolower(rtrim(trim($domain), '.'));
+		return str_starts_with($domain, 'www.') ? substr($domain, 4) : $domain;
 	}
 
 	public static function isOfflineBootstrapKey(?string $apiKey, ?string $keyType = null): bool
@@ -118,22 +98,16 @@ final class FfApiResilience
 		{
 			return true;
 		}
-		$apiKey = trim((string) $apiKey);
 
+		$apiKey = trim((string) $apiKey);
 		return $apiKey !== '' && str_starts_with($apiKey, self::OFFLINE_TOKEN_PREFIX);
 	}
 
-	/**
-	 * @param array<string, mixed> $bootstrapResponse
-	 * @param array<string, mixed> $state
-	 */
+	/** @param array<string, mixed> $bootstrapResponse @param array<string, mixed> $state */
 	public static function applyOfflineBootstrapRouting(array $bootstrapResponse, array &$state, string $usedBase): void
 	{
 		$keyType = isset($bootstrapResponse['key_type']) ? (string) $bootstrapResponse['key_type'] : '';
 		$apiKey = isset($bootstrapResponse['api_key']) ? (string) $bootstrapResponse['api_key'] : '';
-		/* Only an identity-bearing bootstrap/status response is authoritative for
-		 * route ownership. Ordinary check/report responses must not silently erase
-		 * the issuer pin for an offline bootstrap credential. */
 		if ($apiKey === '' && $keyType === '')
 		{
 			return;
@@ -152,32 +126,24 @@ final class FfApiResilience
 			return;
 		}
 
-		$preferred = self::normaliseBaseUrl((string) ($bootstrapResponse['preferred_endpoint'] ?? $usedBase));
-		$rebootstrapAfter = (int) ($bootstrapResponse['rebootstrap_after_seconds'] ?? 600);
-		if ($rebootstrapAfter < 60)
-		{
-			$rebootstrapAfter = 600;
-		}
+		$rebootstrapAfter = max(60, (int) ($bootstrapResponse['rebootstrap_after_seconds'] ?? 600));
 		$jitter = random_int(0, min(120, (int) floor($rebootstrapAfter / 4)));
-
 		$state['offline_pinned'] = true;
-		$state['issuer_node_id'] = (string) ($bootstrapResponse['issuer_node_id'] ?? '');
-		$state['offline_preferred_endpoint'] = $preferred;
-		$state['offline_canonical_domain'] = (string) ($bootstrapResponse['canonical_domain'] ?? '');
+		$state['issuer_node_id'] = trim((string) ($bootstrapResponse['issuer_node_id'] ?? ''));
+		$state['offline_preferred_endpoint'] = self::normaliseBaseUrl(
+			(string) ($bootstrapResponse['preferred_endpoint'] ?? $usedBase)
+		);
+		$state['offline_canonical_domain'] = self::normaliseDomain(
+			(string) ($bootstrapResponse['canonical_domain'] ?? '')
+		);
 		$state['offline_rebootstrap_at'] = time() + $rebootstrapAfter + $jitter;
-		$fallback = $bootstrapResponse['fallback_bootstrap_endpoints'] ?? null;
-		$state['fallback_bootstrap_endpoints'] = is_array($fallback)
-			? array_values(array_filter(array_map(
-				static fn ($u) => self::normaliseBaseUrl((string) $u),
-				$fallback
-			)))
+		$fallbacks = is_array($bootstrapResponse['fallback_bootstrap_endpoints'] ?? null)
+			? $bootstrapResponse['fallback_bootstrap_endpoints']
 			: [];
+		$state['fallback_bootstrap_endpoints'] = self::uniqueOrderedBases($fallbacks);
 	}
 
-	/**
-	 * @param array<string, mixed> $state
-	 * @return list<string>
-	 */
+	/** @param array<string, mixed> $state @return list<string> */
 	public static function offlinePinnedCheckBases(array $state): array
 	{
 		if (empty($state['offline_pinned']))
@@ -185,44 +151,29 @@ final class FfApiResilience
 			return [];
 		}
 		$preferred = self::normaliseBaseUrl((string) ($state['offline_preferred_endpoint'] ?? ''));
-		if ($preferred === '')
-		{
-			return [];
-		}
-
-		return [$preferred];
+		return $preferred !== '' ? [$preferred] : [];
 	}
 
-	/**
-	 * @param array<string, mixed> $state
-	 * @return list<string>
-	 */
+	/** @param array<string, mixed> $state @param list<string> $edgeBases @return list<string> */
 	public static function offlineRebootstrapBases(array $state, string $controlBase, string $apiBase, array $edgeBases, string $manualBase): array
 	{
-		$fallback = is_array($state['fallback_bootstrap_endpoints'] ?? null)
+		$fallbacks = is_array($state['fallback_bootstrap_endpoints'] ?? null)
 			? $state['fallback_bootstrap_endpoints']
 			: [];
-
 		return self::uniqueOrderedBases(
-			$fallback,
+			$fallbacks,
 			self::bootstrapBasesOrdered($controlBase, $apiBase, $manualBase, $edgeBases)
 		);
 	}
 
+	/** @param array<string, mixed> $state */
 	public static function shouldRebootstrapOfflineNow(array $state): bool
 	{
-		if (empty($state['offline_pinned']))
-		{
-			return false;
-		}
 		$at = (int) ($state['offline_rebootstrap_at'] ?? 0);
-
-		return $at > 0 && time() >= $at;
+		return !empty($state['offline_pinned']) && $at > 0 && time() >= $at;
 	}
 
-	/**
-	 * @param array<string, mixed>|null $decodedBody
-	 */
+	/** @param array<string, mixed>|null $decodedBody */
 	public static function isNodeMismatchResponse(?array $decodedBody): bool
 	{
 		if (!is_array($decodedBody))
@@ -230,12 +181,12 @@ final class FfApiResilience
 			return false;
 		}
 		$candidates = [];
-		if (isset($decodedBody['error']))
+		if (isset($decodedBody['error']) && is_scalar($decodedBody['error']))
 		{
 			$candidates[] = strtolower(trim((string) $decodedBody['error']));
 		}
 		$detail = $decodedBody['detail'] ?? null;
-		if (is_array($detail) && isset($detail['error']))
+		if (is_array($detail) && isset($detail['error']) && is_scalar($detail['error']))
 		{
 			$candidates[] = strtolower(trim((string) $detail['error']));
 		}
@@ -243,106 +194,12 @@ final class FfApiResilience
 		return in_array('node_mismatch', $candidates, true);
 	}
 
-	public static function normaliseTrafficTier(mixed $raw): int
-	{
-		if (!is_int($raw) && !is_float($raw) && !is_string($raw))
-		{
-			return 1;
-		}
-		$tier = (int) $raw;
-		if ($tier < 1)
-		{
-			return 1;
-		}
-		if ($tier > 3)
-		{
-			return 3;
-		}
-
-		return $tier;
-	}
-
-	/**
-	 * @param array<string, array<string, mixed>> $endpointMeta
-	 */
-	public static function endpointMetaForBase(array $endpointMeta, string $base): array
-	{
-		return isset($endpointMeta[$base]) && is_array($endpointMeta[$base]) ? $endpointMeta[$base] : [];
-	}
-
-	/**
-	 * Whether a base may serve /v1/check* after catalog + local health probes.
-	 *
-	 * @param array<string, array<string, mixed>> $endpointMeta
-	 */
-	/**
-	 * Keep fortress.ffapi.net last on check paths so edges are always tried first.
-	 *
-	 * @param list<string> $bases
-	 * @return list<string>
-	 */
-	public static function orderCheckBasesControlLast(array $bases, string $controlBase): array
-	{
-		$controlBase = self::normaliseBaseUrl($controlBase);
-		if ($controlBase === '')
-		{
-			return $bases;
-		}
-		$rest = [];
-		$control = null;
-		foreach ($bases as $base)
-		{
-			$base = self::normaliseBaseUrl((string) $base);
-			if ($base === '')
-			{
-				continue;
-			}
-			if ($base === $controlBase)
-			{
-				$control = $base;
-				continue;
-			}
-			if (!in_array($base, $rest, true))
-			{
-				$rest[] = $base;
-			}
-		}
-		if ($control !== null)
-		{
-			$rest[] = $control;
-		}
-
-		return $rest;
-	}
-
 	public static function hotFailoverApiBaseUrl(string $manualBase, string $controlBase): string
 	{
-		$manualBase = self::normaliseBaseUrl($manualBase);
-		if ($manualBase !== '')
-		{
-			$host = parse_url($manualBase, PHP_URL_HOST);
-			if (is_string($host) && strpos(strtolower($host), 'api.') === 0)
-			{
-				return $manualBase;
-			}
-		}
-		$controlBase = self::normaliseBaseUrl($controlBase);
-		if ($controlBase !== '')
-		{
-			$host = parse_url($controlBase, PHP_URL_HOST);
-			if (is_string($host) && strpos(strtolower($host), 'control.') === 0 && strpos($host, '.') !== false)
-			{
-				return self::normaliseBaseUrl('https://api.' . substr($host, 8));
-			}
-		}
-
-		return 'https://api.ffapi.net';
+		return self::GLOBAL_API_BASE_URL;
 	}
 
-	/**
-	 * @param list<list<string>> $lists
-	 * @return list<string>
-	 */
+	/** @param list<list<string>> $lists @return list<string> */
 	public static function uniqueOrderedBases(array ...$lists): array
 	{
 		$out = [];
@@ -361,192 +218,39 @@ final class FfApiResilience
 		return $out;
 	}
 
-	/**
-	 * Bootstrap order: control, hot api, cached edges, manual fallback.
-	 *
-	 * @param list<string> $edgeBases
-	 * @return list<string>
-	 */
-	public static function bootstrapBasesOrdered(
-		string $controlBase,
-		string $apiBase,
-		string $manualBase,
-		array $edgeBases
-	): array {
-		$controlBase = self::normaliseBaseUrl($controlBase);
-		$apiBase = self::normaliseBaseUrl($apiBase);
-		$manualBase = self::normaliseBaseUrl($manualBase);
-
-		return self::uniqueOrderedBases(
-			$controlBase !== '' ? [$controlBase] : [],
-			($apiBase !== '' && $apiBase !== $controlBase) ? [$apiBase] : [],
-			$edgeBases,
-			($manualBase !== '' && $manualBase !== $controlBase && $manualBase !== $apiBase) ? [$manualBase] : []
-		);
+	/** @param array<string, array<string, mixed>> $metadata @return array<string, mixed> */
+	public static function endpointMetaForBase(array $metadata, string $base): array
+	{
+		$base = self::normaliseBaseUrl($base);
+		$row = $base !== '' ? ($metadata[$base] ?? null) : null;
+		return is_array($row) ? $row : [];
 	}
 
-	/**
-	 * Catalog fetch order: control, hot api, cached edges (edges may proxy discovery to control).
-	 *
-	 * @param list<string> $edgeBases
-	 * @return list<string>
-	 */
-	public static function catalogFetchBases(string $controlBase, string $apiBase, array $edgeBases): array
+	/** @param list<string> $bases @return list<string> */
+	public static function orderCheckBasesControlLast(array $bases, string $controlBase): array
 	{
 		$controlBase = self::normaliseBaseUrl($controlBase);
-		$apiBase = self::normaliseBaseUrl($apiBase);
-
-		return self::uniqueOrderedBases(
-			$controlBase !== '' ? [$controlBase] : [],
-			($apiBase !== '' && $apiBase !== $controlBase) ? [$apiBase] : [],
-			$edgeBases
-		);
+		$ordered = self::uniqueOrderedBases($bases);
+		$out = array_values(array_filter($ordered, static fn (string $base): bool => $base !== $controlBase));
+		if ($controlBase !== '' && in_array($controlBase, $ordered, true))
+		{
+			$out[] = $controlBase;
+		}
+		return $out;
 	}
 
-	/**
-	 * Whether cached node-endpoint list should be refetched (catalog_fetched_at / empty list).
-	 *
-	 * @param array<string, mixed> $state Plugin endpoint state blob
-	 */
+	/** @param list<string> $edgeBases @return list<string> */
+	public static function bootstrapBasesOrdered(string $controlBase, string $apiBase, string $manualBase, array $edgeBases): array
+	{
+		return self::uniqueOrderedBases([$controlBase, $apiBase], $edgeBases, [$manualBase]);
+	}
+
+	/** @param array<string, mixed> $state */
 	public static function isEndpointCatalogStale(array $state, ?int $ttlSeconds = null): bool
 	{
-		$ttl = $ttlSeconds ?? self::ENDPOINT_CATALOG_TTL_SECONDS;
 		$fetchedAt = (int) ($state['catalog_fetched_at'] ?? 0);
-		$endpoints = $state['endpoints'] ?? null;
-		if ($fetchedAt <= 0 || !is_array($endpoints) || $endpoints === [])
-		{
-			return true;
-		}
-
-		return (time() - $fetchedAt) > $ttl;
-	}
-
-	/**
-	 * @param array<string, mixed> $state
-	 */
-	public static function shouldBackoffEndpointCatalogRefresh(array $state, ?int $now = null): bool
-	{
-		$now = $now ?? time();
-		$failedAt = (int) ($state[self::ENDPOINT_CATALOG_FAILED_AT_KEY] ?? 0);
-		if ($failedAt <= 0)
-		{
-			return false;
-		}
-
-		return ($now - $failedAt) < self::ENDPOINT_CATALOG_REFRESH_BACKOFF_SECONDS;
-	}
-
-	/**
-	 * @param array<string, mixed> $state
-	 */
-	public static function noteEndpointCatalogRefreshFailure(array &$state, ?int $now = null): void
-	{
-		$state[self::ENDPOINT_CATALOG_FAILED_AT_KEY] = $now ?? time();
-	}
-
-	/**
-	 * @param array<string, mixed> $state
-	 */
-	public static function noteEndpointCatalogRefreshSuccess(array &$state): void
-	{
-		unset($state[self::ENDPOINT_CATALOG_FAILED_AT_KEY]);
-	}
-
-	/**
-	 * After successful check-in / site sync, optionally refresh discovery catalog when stale.
-	 */
-	public static function shouldRefreshEndpointCatalogOnCheckIn(?string $requestPath): bool
-	{
-		if (!is_string($requestPath) || $requestPath === '')
-		{
-			return false;
-		}
-		foreach (
-			[
-				'/v1/check',
-				'/v1/site/ping',
-				'/v1/site/status',
-				'/v1/site/register',
-				'/v1/site/bootstrap',
-			] as $prefix
-		)
-		{
-			if ($requestPath === $prefix || str_starts_with($requestPath, $prefix . '/'))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Moderation sync must use api.ffapi.net then control only (never edge hostnames).
-	 *
-	 * @return list<string>
-	 */
-	public static function moderationSyncBasesOrdered(string $apiBase, string $controlBase): array
-	{
-		$apiBase = self::normaliseBaseUrl($apiBase);
-		$controlBase = self::normaliseBaseUrl($controlBase);
-
-		return self::uniqueOrderedBases(
-			$apiBase !== '' ? [$apiBase] : [],
-			($controlBase !== '' && $controlBase !== $apiBase) ? [$controlBase] : []
-		);
-	}
-
-	public static function isStrictSupernodeSyncPath(?string $requestPath): bool
-	{
-		if (!is_string($requestPath) || $requestPath === '')
-		{
-			return false;
-		}
-		foreach (['/v1/moderation-queue/', '/v1/moderation-actions/'] as $prefix)
-		{
-			if (str_starts_with($requestPath, $prefix))
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/**
-	 * Read-only plugin calls that should prefer healthy edges over control/api when reachable.
-	 */
-	public static function isEdgePreferredReadPath(?string $requestPath): bool
-	{
-		if (!is_string($requestPath) || $requestPath === '')
-		{
-			return false;
-		}
-		foreach (
-			[
-				'/v1/forum/stats',
-			] as $path
-		)
-		{
-			if ($requestPath === $path)
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	public static function shouldFailoverOnIntermittentStatus(int $status, ?string $requestPath): bool
-	{
-		if (!in_array($status, [401, 404], true))
-		{
-			return false;
-		}
-
-		return self::isEdgePreferredReadPath($requestPath)
-			|| self::isStrictSupernodeSyncPath($requestPath)
-			|| $requestPath === '/v1/plugin-release';
+		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
+		return $fetchedAt <= 0 || !$endpoints || (time() - $fetchedAt) >= max(1, $ttlSeconds ?? self::ENDPOINT_CATALOG_TTL_SECONDS);
 	}
 
 	public static function shouldFailoverOnEndpointStatus(int $status): bool
@@ -556,62 +260,13 @@ final class FfApiResilience
 
 	public static function shouldStopEndpointFailoverForStatus(int $status): bool
 	{
-		return $status >= 400 && $status < 500 && !self::shouldFailoverOnEndpointStatus($status);
+		return $status >= 400 && $status < 500;
 	}
-
-	/**
-	 * Background site sync and moderation should not fan out across edge hostnames.
-	 */
-	public static function isControlPlanePreferredPath(?string $requestPath): bool
-	{
-		if (!is_string($requestPath) || $requestPath === '')
-		{
-			return false;
-		}
-		foreach (
-			[
-				'/v1/site/ping',
-				'/v1/site/status',
-				'/v1/site/register',
-				'/v1/site/portal',
-				'/v1/site/attack-mode',
-				'/v1/site/attack-mode/end',
-			] as $path
-		)
-		{
-			if ($requestPath === $path)
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	/** Minimum HTTP timeout for contact-form checks (slow enrichment path). */
-	public const CONTACT_PAGE_MIN_TIMEOUT_SECONDS = 6;
-
-	/** Maximum HTTP timeout for contact-form checks. */
-	public const CONTACT_PAGE_MAX_TIMEOUT_SECONDS = 12;
-
-	/** At most one regional edge plus api.ffapi.net per contact_page attempt cycle. */
-	public const CONTACT_PAGE_FAILOVER_MAX_BASES = 2;
-
-	/** Throttle repeated timeout warnings in forum error logs. */
-	public const API_TIMEOUT_LOG_THROTTLE_SECONDS = 300;
-
-	/** Log transient background failures only after this many consecutive errors. */
-	public const CONSECUTIVE_TRANSIENT_LOG_THRESHOLD = 3;
 
 	public static function isContactPageCheckPath(?string $requestPath): bool
 	{
-		if (!is_string($requestPath) || $requestPath === '')
-		{
-			return false;
-		}
-
-		return $requestPath === '/v1/check/contact_page'
-			|| str_starts_with($requestPath, '/v1/check/contact_page');
+		return is_string($requestPath)
+			&& ($requestPath === '/v1/check/contact_page' || str_starts_with($requestPath, '/v1/check/contact_page'));
 	}
 
 	public static function shouldUseContactPageRouting(?string $requestPath): bool
@@ -621,12 +276,9 @@ final class FfApiResilience
 
 	public static function contactPageCheckTimeoutSeconds(int $configuredTimeoutSeconds): int
 	{
-		$configured = max(1, $configuredTimeoutSeconds);
-		$scaled = $configured * 2;
-
 		return max(
 			self::CONTACT_PAGE_MIN_TIMEOUT_SECONDS,
-			min(self::CONTACT_PAGE_MAX_TIMEOUT_SECONDS, $scaled)
+			min(self::CONTACT_PAGE_MAX_TIMEOUT_SECONDS, max(1, $configuredTimeoutSeconds) * 2)
 		);
 	}
 
@@ -637,54 +289,18 @@ final class FfApiResilience
 			return false;
 		}
 		$lower = strtolower($message);
-
-		return str_contains($lower, 'curl error 28')
-			|| str_contains($lower, 'timed out')
-			|| str_contains($lower, 'timeout')
-			|| str_contains($lower, 'curl error 6')
-			|| str_contains($lower, 'curl error 7')
-			|| str_contains($lower, 'could not resolve host')
-			|| str_contains($lower, 'failed to connect')
-			|| str_contains($lower, 'connection refused')
-			|| str_contains($lower, 'network is unreachable');
-	}
-
-	/**
-	 * Route contact_page through api.ffapi.net first, then at most one catalog edge.
-	 * Avoids serial 3s timeouts across every unhealthy edge hostname.
-	 *
-	 * @param list<string> $orderedBases
-	 * @return list<string>
-	 */
-	public static function contactPageCheckBasesOrdered(
-		array $orderedBases,
-		string $hotApiBase,
-		int $maxBases = self::CONTACT_PAGE_FAILOVER_MAX_BASES
-	): array {
-		$hotApiBase = self::normaliseBaseUrl($hotApiBase);
-		$out = [];
-		if ($hotApiBase !== '')
+		foreach (['curl error 28', 'timed out', 'timeout', 'curl error 6', 'curl error 7', 'could not resolve host', 'failed to connect', 'connection refused', 'network is unreachable'] as $needle)
 		{
-			$out[] = $hotApiBase;
-		}
-		foreach ($orderedBases as $base)
-		{
-			$base = self::normaliseBaseUrl((string) $base);
-			if ($base === '' || $base === $hotApiBase)
+			if (str_contains($lower, $needle))
 			{
-				continue;
+				return true;
 			}
-			$out[] = $base;
 		}
-		$out = self::uniqueOrderedBases($out);
-		$maxBases = max(1, $maxBases);
 
-		return array_slice($out, 0, $maxBases);
+		return false;
 	}
 
-	/**
-	 * @param array<string, mixed> $state
-	 */
+	/** @param array<string, mixed> $state */
 	public static function shouldLogThrottledApiFailure(
 		array &$state,
 		string $throttleKey,
@@ -703,32 +319,21 @@ final class FfApiResilience
 		return true;
 	}
 
-	/**
-	 * Require N consecutive transient failures before logging; reset streak on success.
-	 *
-	 * @param array<string, mixed> $state
-	 */
+	/** @param array<string, mixed> $state */
 	public static function shouldLogConsecutiveTransientFailure(
 		array &$state,
 		string $failureKey,
 		bool $failed,
 		int $threshold = self::CONSECUTIVE_TRANSIENT_LOG_THRESHOLD
 	): bool {
-		$threshold = max(1, $threshold);
 		$key = 'fail_streak_' . preg_replace('/[^a-z0-9_]+/i', '_', strtolower($failureKey));
 		if (!$failed)
 		{
 			unset($state[$key]);
-
 			return false;
 		}
-		$streak = (int) ($state[$key] ?? 0) + 1;
-		$state[$key] = $streak;
-		if ($streak < $threshold)
-		{
-			return false;
-		}
-
-		return self::shouldLogThrottledApiFailure($state, $failureKey);
+		$state[$key] = (int) ($state[$key] ?? 0) + 1;
+		return $state[$key] >= max(1, $threshold)
+			&& self::shouldLogThrottledApiFailure($state, $failureKey);
 	}
 }

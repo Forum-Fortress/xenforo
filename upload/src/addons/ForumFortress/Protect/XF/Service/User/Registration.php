@@ -11,6 +11,8 @@ use XF\Entity\User;
  */
 class Registration extends XFCP_Registration
 {
+	protected bool $rejectedByForumFortress = false;
+
 	public function checkForSpam()
 	{
 		parent::checkForSpam();
@@ -41,11 +43,7 @@ class Registration extends XFCP_Registration
 			return;
 		}
 
-		$session = $this->app->session();
-		if ($session)
-		{
-			$session->set('ffProtectRejectedByForumFortress', true);
-		}
+		$this->rejectedByForumFortress = true;
 
 		if ($user->user_state !== 'rejected')
 		{
@@ -79,13 +77,12 @@ class Registration extends XFCP_Registration
 			return;
 		}
 
-		$session = $this->app->session();
-		if (!$session || !$session->get('ffProtectRejectedByForumFortress'))
+		if (!$this->rejectedByForumFortress)
 		{
 			return;
 		}
 
-		$session->remove('ffProtectRejectedByForumFortress');
+		$this->rejectedByForumFortress = false;
 		$this->app->jobManager()->enqueueUnique(
 			'ffProtectDeleteRejectedUser' . $user->user_id,
 			DeleteRejectedUser::class,

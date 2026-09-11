@@ -12,13 +12,15 @@ use function array_merge, array_values, array_unique, array_map, array_filter, b
 class ApiClient
 {
 	public const PLATFORM = 'xenforo';
-	public const PLUGIN_VERSION = '1.8.11';
+	public const PLUGIN_VERSION = '1.9.0';
 	public const CONTROL_PLANE_BASE_URL = 'https://fortress.ffapi.net';
 	/** Add-on id string; must match {@see Setup::ADD_ON_ID} for simpleCache keys. */
 	protected const ADDON_ID_FOR_CACHE = 'ForumFortress/Protect';
+	protected const ENDPOINT_STATE_CACHE_KEY = 'endpointState';
 	/** Minimum seconds between full hourly sync runs (cron + HTTP fallback share this gate). */
 	protected const HOURLY_SYNC_MIN_INTERVAL = 540;
-	protected const ENDPOINT_REFRESH_REQUEST_MAX_DELAY_SECONDS = 60;
+	protected const STANDARD_HEARTBEAT_INTERVAL_SECONDS = 3600;
+	protected const PRO_HEARTBEAT_INTERVAL_SECONDS = 600;
 	protected const CONNECTION_TEST_TIMEOUT_SECONDS = 2;
 	protected const CONNECTION_TEST_TOTAL_BUDGET_SECONDS = 5;
 	protected const PLAN_REFRESH_SECONDS = 86400;
@@ -105,12 +107,6 @@ class ApiClient
 		}
 
 		$this->persistIdentityFromResponse($response);
-		if ($response)
-		{
-			$this->maybeRefreshEndpointCatalogAfterCheckIn(
-				$endpoint === 'register' ? '/v1/check/register' : '/v1/check/' . $endpoint
-			);
-		}
 		return $response;
 	}
 
@@ -130,30 +126,6 @@ class ApiClient
 		return $response;
 	}
 
-	public function health(?int $timeoutOverride = null): ?array
-	{
-		if (!$this->isEnabled())
-		{
-			return null;
-		}
-		if (\FfApiResilience::apiRegionIsLocked($this->getApiRegion()))
-		{
-			$timeout = max(1, $timeoutOverride ?? self::CONNECTION_TEST_TIMEOUT_SECONDS);
-			foreach (\FfApiResilience::regionLockedCheckBases($this->getApiRegion(), $this->allowGlobalEmergencyFallback()) as $base)
-			{
-				$health = $this->rawRequest('GET', $base, '/health', [], $timeout);
-				if (($health['status'] ?? 0) >= 200 && ($health['status'] ?? 0) < 300
-					&& is_array($health['data'] ?? null))
-				{
-					return $health['data'];
-				}
-			}
-			return null;
-		}
-
-		return $this->request('GET', '/health', [], $timeoutOverride);
-	}
-
 	public function capabilities(?int $timeoutOverride = null): ?array
 	{
 		if (!$this->isEnabled())
@@ -161,7 +133,7 @@ class ApiClient
 			return null;
 		}
 
-		return $this->requestFromControlPlane('GET', '/v1/capabilities', [], $timeoutOverride);
+		return $this->request('GET', '/v1/capabilities', [], $timeoutOverride);
 	}
 
 	public function siteStatus(?int $timeoutOverride = null): ?array
@@ -223,7 +195,7 @@ class ApiClient
 			return null;
 		}
 
-		return $this->requestFromControlPlane('GET', '/v1/plugin-release', [
+		return $this->request('GET', '/v1/plugin-release', [
 			'platform' => self::PLATFORM,
 			'current_version' => self::PLUGIN_VERSION,
 		], $timeoutOverride);
@@ -266,27 +238,23 @@ class ApiClient
 			$this->logBackgroundTaskFailure('plugin release check failed', $e);
 		}
 
-		try
+		if ($this->heartbeatIsDue())
 		{
-			$this->refreshEndpointCatalogAndHealth();
-		}
-		catch (\Throwable $e)
-		{
-			$this->logBackgroundTaskFailure('endpoint catalog refresh failed', $e);
-		}
-
-		try
-		{
-			$this->sitePing();
-		}
-		catch (\Throwable $e)
-		{
-			$this->logBackgroundTaskFailure('site ping failed', $e);
+			$this->markHeartbeatAttempt();
+			try
+			{
+				$sitePing = $this->sitePing();
+				$this->noteBackgroundTaskResult('site ping failed', is_array($sitePing));
+			}
+			catch (\Throwable $e)
+			{
+				$this->logBackgroundTaskFailure('site ping failed', $e);
+			}
 		}
 
 		try
 		{
-			$this->refreshPlanCacheIfStale(true);
+			$this->refreshPlanCacheIfStale(false);
 		}
 		catch (\Throwable $e)
 		{
@@ -517,7 +485,7 @@ class ApiClient
 			return null;
 		}
 
-		$payload = $this->requestFromControlPlane('POST', '/v1/site/ping', [
+		$payload = $this->request('POST', '/v1/site/ping', [
 			'api_key' => $apiKey,
 			'site_id' => $siteId,
 			'domain' => $this->getDomain(),
@@ -530,9 +498,27 @@ class ApiClient
 			$state = $this->loadEndpointState();
 			$state['last_site_ping_at'] = time();
 			$this->saveEndpointState($state);
-			$this->maybeRefreshEndpointCatalogAfterCheckIn('/v1/site/ping');
 		}
 		return $payload;
+	}
+
+	protected function heartbeatIsDue(): bool
+	{
+		$state = $this->loadEndpointState();
+		$lastAttempt = (int) ($state['heartbeat_last_attempt_at'] ?? 0);
+		$plan = strtolower(trim((string) ($state['plan_name'] ?? ($state['site_status']['plan'] ?? ''))));
+		$interval = $plan === 'pro'
+			? self::PRO_HEARTBEAT_INTERVAL_SECONDS
+			: self::STANDARD_HEARTBEAT_INTERVAL_SECONDS;
+
+		return $lastAttempt <= 0 || (time() - $lastAttempt) >= $interval;
+	}
+
+	protected function markHeartbeatAttempt(): void
+	{
+		$state = $this->loadEndpointState();
+		$state['heartbeat_last_attempt_at'] = time();
+		$this->saveEndpointState($state);
 	}
 
 	public function runModerationSyncCycle(bool $force = false): void
@@ -703,16 +689,6 @@ class ApiClient
 			$response = $bootstrapResult['data'];
 			$usedBase = $bootstrapResult['base'];
 		}
-		if (!$response && $this->fetchNodeEndpointsCatalog(true))
-		{
-			$bootstrapResult = $this->tryBootstrapAcrossBases($payload, $timeout);
-			if ($bootstrapResult)
-			{
-				$response = $bootstrapResult['data'];
-				$usedBase = $bootstrapResult['base'];
-			}
-		}
-
 		if ($response)
 		{
 			$this->persistIdentityFromResponse($response, $usedBase);
@@ -767,16 +743,7 @@ class ApiClient
 	 */
 	protected function tryBootstrapAcrossBases(array $payload, int $timeout): ?array
 	{
-		$state = $this->loadEndpointState();
-		$bases = !empty($state['offline_pinned']) && \FfApiResilience::shouldRebootstrapOfflineNow($state)
-			? \FfApiResilience::offlineRebootstrapBases(
-				$state,
-				$this->getControlPlaneBaseUrl(),
-				$this->getHotFailoverApiBaseUrl(),
-				$this->edgeBasesFromState(),
-				$this->getManualBaseUrl()
-			)
-			: $this->bootstrapBasesOrdered();
+		$bases = $this->bootstrapBasesOrdered();
 		foreach ($bases as $base)
 		{
 			$raw = $this->rawRequest('POST', $base, '/v1/site/bootstrap', $payload, $timeout);
@@ -900,246 +867,42 @@ class ApiClient
 	}
 
 	/** @return list<string> */
-	protected function edgeBasesFromState(): array
-	{
-		$state = $this->loadEndpointState();
-		$endpointList = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$edges = [];
-		foreach ($endpointList as $row)
-		{
-			$edges[] = (string) $row;
-		}
-
-		return $edges;
-	}
-
-	/** @return list<string> */
 	protected function bootstrapBasesOrdered(): array
 	{
-		if (\FfApiResilience::apiRegionIsLocked($this->getApiRegion()))
-		{
-			return \FfApiResilience::uniqueOrderedBases(
-				\FfApiResilience::regionLockedCheckBases($this->getApiRegion(), $this->allowGlobalEmergencyFallback()),
-				[$this->getControlPlaneBaseUrl()]
-			);
-		}
-		return \FfApiResilience::bootstrapBasesOrdered(
-			$this->getControlPlaneBaseUrl(),
-			$this->getHotFailoverApiBaseUrl(),
-			$this->getManualBaseUrl(),
-			$this->edgeBasesFromState()
-		);
+		return $this->lookupBasesOrdered();
 	}
 
 	/** @return list<string> */
-	protected function catalogFetchBases(): array
+	protected function lookupBasesOrdered(): array
 	{
-		return \FfApiResilience::catalogFetchBases(
-			$this->getControlPlaneBaseUrl(),
-			$this->getHotFailoverApiBaseUrl(),
-			$this->edgeBasesFromState()
-		);
-	}
-
-	/**
-	 * @param list<string> $endpoints
-	 * @return list<string>
-	 */
-	protected function normalisedEndpointList(array $endpoints): array
-	{
-		$normalised = array_values(array_unique(array_map(function ($u) {
-			return $this->normaliseBaseUrl((string) $u);
-		}, $endpoints)));
-		$normalised = array_values(array_filter($normalised, function ($u) {
-			return $u !== '';
-		}));
-		sort($normalised);
-
-		return $normalised;
-	}
-
-	/**
-	 * @param list<string> $previous
-	 * @param list<string> $next
-	 */
-	protected function endpointCatalogChanged(array $previous, array $next): bool
-	{
-		return $this->normalisedEndpointList($previous) !== $this->normalisedEndpointList($next);
-	}
-
-	/**
-	 * @param array<string, mixed> $state
-	 */
-	protected function invalidateEndpointHealthState(array &$state): void
-	{
-		$state['last_health_at'] = 0;
-		$state['health_day'] = '';
-	}
-
-	/**
-	 * GET /v1/node-endpoints from control, api.ffapi.net, or edges (edges may proxy to control).
-	 */
-	protected function fetchNodeEndpointsCatalog(bool $force = false, ?int $timeoutOverride = null): bool
-	{
-		$state = $this->loadEndpointState();
-		$previousEndpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$now = time();
-		if (!$force && !\FfApiResilience::isEndpointCatalogStale($state))
-		{
-			return true;
-		}
-		if (!$force && \FfApiResilience::shouldBackoffEndpointCatalogRefresh($state, $now))
-		{
-			return false;
-		}
-
-		$urls = [];
-		$endpointMeta = [];
-		foreach ($this->catalogFetchBases() as $catalogBase)
-		{
-			$res = $this->rawRequest('GET', $catalogBase, '/v1/node-endpoints', [], max(1, $timeoutOverride ?? self::CONNECTION_TEST_TIMEOUT_SECONDS));
-			if (($res['status'] ?? 0) < 200 || ($res['status'] ?? 0) >= 300 || !is_array($res['data'] ?? null))
-			{
-				continue;
-			}
-			$endpoints = $res['data']['endpoints'] ?? null;
-			if (!is_array($endpoints))
-			{
-				continue;
-			}
-			$state['control_check_fallback'] = !empty($res['data']['control_check_fallback']);
-			$endpointMeta = [];
-			foreach ($endpoints as $row)
-			{
-				if (!is_array($row))
-				{
-					continue;
-				}
-				$url = $this->normaliseBaseUrl((string) ($row['url'] ?? ''));
-				if ($url === '')
-				{
-					continue;
-				}
-				$urls[$url] = true;
-				$endpointMeta[$url] = [
-					'check_ready' => array_key_exists('check_ready', $row) ? (bool) $row['check_ready'] : null,
-					'status' => isset($row['status']) ? (string) $row['status'] : '',
-					'role' => isset($row['role']) ? (string) $row['role'] : '',
-					'traffic_tier' => array_key_exists('traffic_tier', $row)
-						? \FfApiResilience::normaliseTrafficTier($row['traffic_tier'])
-						: null,
-				];
-			}
-			if ($urls)
-			{
-				break;
-			}
-		}
-		if (!$urls)
-		{
-			\FfApiResilience::noteEndpointCatalogRefreshFailure($state, $now);
-			$this->saveEndpointState($state);
-
-			return false;
-		}
-		$newEndpoints = array_values(array_keys($urls));
-		if ($this->endpointCatalogChanged($previousEndpoints, $newEndpoints))
-		{
-			$this->invalidateEndpointHealthState($state);
-		}
-		$state['catalog_fetched_at'] = $now;
-		$state['endpoints'] = $newEndpoints;
-		if ($endpointMeta)
-		{
-			$state['endpoint_meta'] = $endpointMeta;
-		}
-		\FfApiResilience::noteEndpointCatalogRefreshSuccess($state);
-		$this->saveEndpointState($state);
-
-		return true;
-	}
-
-	/**
-	 * Catalog-only refresh when TTL elapsed (no health probes). Used after check-in and by cron.
-	 */
-	public function refreshEndpointCatalogIfStale(): void
-	{
-		if (!$this->isEnabled() || $this->getManualBaseUrl() === '')
-		{
-			return;
-		}
-
-		try
-		{
-			$this->fetchNodeEndpointsCatalog(false);
-		}
-		catch (\Throwable $e)
-		{
-			// Stale routing must not block forum traffic.
-		}
-	}
-
-	protected function maybeRefreshEndpointCatalogAfterCheckIn(string $requestPath): void
-	{
-		if (!\FfApiResilience::shouldRefreshEndpointCatalogOnCheckIn($requestPath))
-		{
-			return;
-		}
-
-		$this->refreshEndpointCatalogIfStale();
-	}
-
-	protected function isCatalogBackupRole(?string $role): bool
-	{
-		$role = strtolower(trim((string) $role));
-		return in_array($role, ['backup', 'control-fallback', 'control'], true);
-	}
-
-	protected function isCatalogBackupEndpointUrl(string $baseUrl, ?string $role = null): bool
-	{
-		if ($this->isCatalogBackupRole($role))
-		{
-			return true;
-		}
+		$primary = $this->getManualBaseUrl();
+		$global = \FfApiResilience::GLOBAL_API_BASE_URL;
 		$control = $this->getControlPlaneBaseUrl();
 
-		return $control !== '' && $this->normaliseBaseUrl($baseUrl) === $control;
-	}
-
-	/** @return callable(string, ?string): bool */
-	protected function catalogBackupCallable(): callable
-	{
-		return function (string $base, ?string $role): bool {
-			return $this->isCatalogBackupEndpointUrl($base, $role);
-		};
-	}
-
-	/** @return array<string, int|null> */
-	protected function isSharedApiRoundRobinBase(string $baseUrl): bool
-	{
-		if ($this->isOfflineApiKey())
+		if ($primary === '')
 		{
-			return false;
+			return [];
 		}
-		$manual = $this->getManualBaseUrl();
-		$baseUrl = $this->normaliseBaseUrl($baseUrl);
-		if ($manual === '' || $baseUrl !== $manual)
+		if (!\FfApiResilience::apiRegionIsLocked($this->getApiRegion()))
 		{
-			return false;
+			return \FfApiResilience::uniqueOrderedBases([$global, $control]);
 		}
-		$host = parse_url($manual, PHP_URL_HOST);
+		if (!$this->allowGlobalEmergencyFallback())
+		{
+			return [$primary];
+		}
 
-		return is_string($host) && strpos(strtolower($host), 'api.') === 0;
+		return \FfApiResilience::uniqueOrderedBases([$primary, $global, $control]);
 	}
 
 	/**
-	 * Bootstrap, catalog, capabilities, plugin-release: prefer control, hot-failover to api.ffapi.net, then edges.
+	 * Control-only actions prefer fortress.ffapi.net and may fail over to api.ffapi.net.
 	 */
 	protected function requestFromControlPlane(string $method, string $path, array $payload, ?int $timeoutOverride = null): ?array
 	{
 		$timeout = max(1, $timeoutOverride ?? $this->getIntOption('ffProtectTimeout', 3));
 		$controlPlaneOnly = $this->isControlPlaneOnlyPath($path);
-		$bases = $controlPlaneOnly ? $this->controlPlaneActionBases() : $this->catalogFetchBases();
+		$bases = $this->controlPlaneActionBases();
 		if (!$bases)
 		{
 			$manual = $this->getManualBaseUrl();
@@ -1162,7 +925,8 @@ class ApiClient
 				if ($status >= 400 && $status < 500)
 				{
 					$data = is_array($raw['data'] ?? null) ? $raw['data'] : [];
-					$lastHttpError = (string) ($data['message'] ?? $data['detail'] ?? $data['error'] ?? ('HTTP ' . $status));
+					$detail = $data['message'] ?? $data['detail'] ?? $data['error'] ?? null;
+					$lastHttpError = is_scalar($detail) ? (string) $detail : ('HTTP ' . $status);
 					// A stale control-plane deployment can briefly lack a newly
 					// added action route. Let the configured hot failover answer
 					// this specific case; authentication and validation errors must
@@ -1208,7 +972,6 @@ class ApiClient
 	protected function isControlPlaneOnlyPath(string $path): bool
 	{
 		return in_array($path, [
-			'/v1/site/ping',
 			'/v1/site/portal',
 			'/v1/site/attack-mode',
 			'/v1/site/attack-mode/end',
@@ -1218,30 +981,35 @@ class ApiClient
 	/** @return array<string, mixed> */
 	protected function loadEndpointState(): array
 	{
-		$raw = trim($this->getStringOption('ffProtectEndpointState'));
-		if ($raw === '')
+		$cache = $this->app->simpleCache();
+		$data = $cache->getValue(self::ADDON_ID_FOR_CACHE, self::ENDPOINT_STATE_CACHE_KEY);
+		if (is_array($data))
 		{
-			return [];
+			return $data;
 		}
-		$data = json_decode($raw, true);
-		return is_array($data) ? $data : [];
+
+		$migrationRaw = trim($this->getStringOption('ffProtectEndpointState'));
+		$migratedState = $migrationRaw !== '' ? json_decode($migrationRaw, true) : null;
+		$data = is_array($migratedState) ? $migratedState : [];
+		$cache->setValue(self::ADDON_ID_FOR_CACHE, self::ENDPOINT_STATE_CACHE_KEY, $data);
+
+		return $data;
 	}
 
 	/** @param array<string, mixed> $state */
 	protected function saveEndpointState(array $state): void
 	{
 		ksort($state);
-		$encoded = json_encode($state, JSON_UNESCAPED_SLASHES);
-		if (!is_string($encoded))
+		$current = $this->app->simpleCache()->getValue(self::ADDON_ID_FOR_CACHE, self::ENDPOINT_STATE_CACHE_KEY);
+		if (is_array($current))
 		{
-			return;
+			ksort($current);
+			if ($current === $state)
+			{
+				return;
+			}
 		}
-		$current = trim($this->getStringOption('ffProtectEndpointState'));
-		if ($current === $encoded)
-		{
-			return;
-		}
-		$this->applyOptionUpdates(['ffProtectEndpointState' => $encoded]);
+		$this->app->simpleCache()->setValue(self::ADDON_ID_FOR_CACHE, self::ENDPOINT_STATE_CACHE_KEY, $state);
 	}
 
 	/** @param array<string, mixed> $status */
@@ -1277,71 +1045,25 @@ class ApiClient
 		$this->saveEndpointState($state);
 	}
 
-	/**
-	 * @return array{
-	 *   catalog_fetched_at: int,
-	 *   endpoints: list<string>,
-	 *   health_day: string,
-	 *   health_ms: array<string, int|null>,
-	 *   last_health_at: int,
-	 *   last_responded: string,
-	 *   last_responded_node: string,
-	 *   last_response_at: int,
-	 *   preferred: string,
-	 *   preferred_missing: string,
-	 *   preferred_missing_at: int
-	 * }
-	 */
+	/** @return array<string, mixed> */
 	public function endpointStateSnapshot(): array
 	{
-		$this->hydrateEndpointStateIfStale();
 		$state = $this->loadEndpointState();
-		$manual = $this->getManualBaseUrl();
-		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$endpoints = $this->normaliseAndSanitiseEndpoints($endpoints, $manual);
+		$endpoints = $this->lookupBasesOrdered();
+		$primary = $endpoints[0] ?? '';
 
 		return [
-			'catalog_fetched_at' => (int) ($state['catalog_fetched_at'] ?? 0),
 			'endpoints' => $endpoints,
-			// Retain empty compatibility fields for older admin templates; the
-			// plugin no longer probes or stores endpoint latency.
-			'health_day' => '',
-			'health_ms' => [],
-			'last_health_at' => (int) ($state['catalog_fetched_at'] ?? 0),
 			'last_responded' => $this->normaliseBaseUrl((string) ($state['last_responded'] ?? '')),
 			'last_responded_node' => trim((string) ($state['last_responded_node'] ?? '')),
 			'last_response_at' => (int) ($state['last_response_at'] ?? 0),
 			'last_site_ping_at' => (int) ($state['last_site_ping_at'] ?? 0),
 			'last_failure' => is_array($state['last_failure'] ?? null) ? $state['last_failure'] : null,
-			// Compatibility fields for existing admin templates. GeoDNS owns
-			// route selection, so legacy preference state is intentionally ignored.
-			'preferred' => $manual,
-			'preferred_missing' => '',
-			'preferred_missing_at' => 0,
+			'preferred' => $primary,
 		];
 	}
 
-	protected function hydrateEndpointStateIfStale(): void
-	{
-		$state = $this->loadEndpointState();
-		$needsHydration = false;
-		if (!is_array($state['endpoints'] ?? null) || !$state['endpoints'])
-		{
-			$needsHydration = true;
-		}
-		if ((int) ($state['catalog_fetched_at'] ?? 0) <= 0)
-		{
-			$needsHydration = true;
-		}
-		if (!$needsHydration)
-		{
-			return;
-		}
-		$state['refresh_requested_at'] = time();
-		$this->saveEndpointState($state);
-	}
-
-	/** @return array{preferred: string, last_responded: string, endpoints_count: int, last_health_at: int, preferred_missing: string} */
+	/** @return array{preferred: string, last_responded: string, endpoints_count: int} */
 	public function endpointStateSummary(): array
 	{
 		$state = $this->endpointStateSnapshot();
@@ -1354,272 +1076,47 @@ class ApiClient
 			'preferred' => $preferred,
 			'last_responded' => $lastResponded,
 			'endpoints_count' => $endpointsCount,
-			'last_health_at' => (int) ($state['last_health_at'] ?? 0),
-			'preferred_missing' => trim((string) ($state['preferred_missing'] ?? '')),
 		];
 	}
 
 	public function endpointHealthDisplayLabel(string $endpointUrl, ?array $state = null): string
 	{
-		$state = $state ?? $this->loadEndpointState();
 		$endpointUrl = $this->normaliseBaseUrl($endpointUrl);
-		if ($endpointUrl === $this->getManualBaseUrl())
+		$ordered = $this->lookupBasesOrdered();
+		if ($endpointUrl !== '' && $endpointUrl === ($ordered[0] ?? ''))
 		{
-			return 'GeoDNS primary';
+			return 'Configured primary';
 		}
-		$meta = is_array($state['endpoint_meta'][$endpointUrl] ?? null) ? $state['endpoint_meta'][$endpointUrl] : [];
-		$role = strtolower((string) ($meta['role'] ?? ''));
-		if ($this->isCatalogBackupEndpointUrl($endpointUrl, $role))
+		if ($endpointUrl === $this->getControlPlaneBaseUrl())
 		{
-			return 'control fallback';
+			return 'Fortress fallback';
 		}
-		return array_key_exists('check_ready', $meta) && empty($meta['check_ready'])
-			? 'catalog standby'
-			: 'catalog fallback';
+
+		return 'global fallback';
 	}
 	/**
 	 * @return list<array{endpoint: string, latency: string, is_preferred: bool}>
 	 */
 	public function buildEndpointLatencyRows(): array
 	{
-		$this->hydrateEndpointStateIfStale();
-		$state = $this->loadEndpointState();
-		$primary = $this->getManualBaseUrl();
-		$targets = \FfApiResilience::uniqueOrderedBases(
-			$primary !== '' ? [$primary] : [],
-			is_array($state['endpoints'] ?? null) ? $state['endpoints'] : []
-		);
+		$targets = $this->lookupBasesOrdered();
+		$primary = $targets[0] ?? '';
 		$rows = [];
 		foreach ($targets as $endpointUrl)
 		{
 			$rows[] = [
 				'endpoint' => $endpointUrl,
-				'latency' => $this->endpointHealthDisplayLabel($endpointUrl, $state),
+				'latency' => $this->endpointHealthDisplayLabel($endpointUrl),
 				'is_preferred' => $endpointUrl === $primary,
 			];
 		}
 		return $rows;
 	}
-	public function refreshEndpointCatalogAndHealth(bool $force = false, ?int $probeTimeout = null): void
-	{
-		if (!$this->isEnabled())
-		{
-			return;
-		}
-		$primary = $this->getManualBaseUrl();
-		if ($primary === '')
-		{
-			return;
-		}
-		$state = $this->loadEndpointState();
-		if ($force)
-		{
-			$state['catalog_fetched_at'] = 0;
-			$this->saveEndpointState($state);
-		}
-		if ($force || \FfApiResilience::isEndpointCatalogStale($state))
-		{
-			$this->fetchNodeEndpointsCatalog($force, $probeTimeout);
-			$state = $this->loadEndpointState();
-		}
-		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$state['endpoints'] = $this->normaliseAndSanitiseEndpoints($endpoints, $primary);
-		$state['preferred'] = $primary;
-		$state['refresh_requested_at'] = 0;
-		unset(
-			$state['health_day'],
-			$state['health_ms'],
-			$state['last_health_at'],
-			$state['health_timed_out'],
-			$state['slow_health_mode'],
-			$state['best_latency_ms'],
-			$state['preferred_candidate'],
-			$state['preferred_candidate_streak'],
-			$state['preferred_missing'],
-			$state['preferred_missing_at'],
-			$state['suppressed_endpoints']
-		);
-		$this->saveEndpointState($state);
-	}
-	public function refreshEndpointsBeforeConnectionTest(?int $probeTimeout = null): void
-	{
-		if (\FfApiResilience::apiRegionIsLocked($this->getApiRegion()))
-		{
-			// The regional health probe in health() is the connection-test route.
-			// Do not discover or probe the global fleet for a geo-locked forum.
-			return;
-		}
-		$this->refreshEndpointCatalogAndHealth(true, $probeTimeout ?? self::CONNECTION_TEST_TIMEOUT_SECONDS);
-	}
 
-	/**
-	 * The catalog controls whether the concrete control fallback may serve checks.
-	 * Normal check routing itself always starts at the GeoDNS hostname.
-	 */
-	protected function baseUrlMayServeCheckTraffic(string $baseUrl): bool
-	{
-		$baseUrl = $this->normaliseBaseUrl($baseUrl);
-		$control = $this->normaliseBaseUrl($this->getControlPlaneBaseUrl());
-		if ($baseUrl === '' || $baseUrl !== $control)
-		{
-			return $baseUrl !== '';
-		}
-		$state = $this->loadEndpointState();
-		if (!empty($state['control_check_fallback']))
-		{
-			return true;
-		}
-		foreach (is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [] as $url => $meta)
-		{
-			if (!is_array($meta) || empty($meta['check_ready']))
-			{
-				continue;
-			}
-			$role = isset($meta['role']) ? (string) $meta['role'] : null;
-			if (!$this->isCatalogBackupEndpointUrl((string) $url, $role))
-			{
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/**
-	 * @return list<string>
-	 */
+	/** @return list<string> */
 	protected function getOrderedBasesForRequests(?string $requestPath = null): array
 	{
-		$primary = $this->getManualBaseUrl();
-		if ($primary === '')
-		{
-			return [];
-		}
-		$state = $this->loadEndpointState();
-		$isCheck = is_string($requestPath) && strpos($requestPath, '/v1/check') === 0;
-		if ($isCheck && \FfApiResilience::apiRegionIsLocked($this->getApiRegion()) && !$this->isOfflineApiKey())
-		{
-			return \FfApiResilience::regionLockedCheckBases(
-				$this->getApiRegion(),
-				$this->allowGlobalEmergencyFallback()
-			);
-		}
-		if ($isCheck && $this->isOfflineApiKey())
-		{
-			$pinned = \FfApiResilience::offlinePinnedCheckBases($state);
-			if ($pinned)
-			{
-				return $pinned;
-			}
-		}
-		if (
-			is_string($requestPath)
-			&& (
-				\FfApiResilience::isStrictSupernodeSyncPath($requestPath)
-				|| \FfApiResilience::isControlPlanePreferredPath($requestPath)
-			)
-		)
-		{
-			return \FfApiResilience::moderationSyncBasesOrdered(
-				$this->getHotFailoverApiBaseUrl(),
-				$this->getControlPlaneBaseUrl()
-			) ?: [\FfApiResilience::hotFailoverApiBaseUrl('', '')];
-		}
-
-		$endpoints = is_array($state['endpoints'] ?? null) ? $state['endpoints'] : [];
-		$endpoints = array_values(array_filter(array_unique(array_map(function ($url) {
-			$url = $this->normaliseBaseUrl((string) $url);
-			return $this->isTrustedEndpointBase($url) ? $url : '';
-		}, $endpoints))));
-		$endpointMeta = is_array($state['endpoint_meta'] ?? null) ? $state['endpoint_meta'] : [];
-
-		// GeoDNS owns endpoint choice. Each new request starts at the regional
-		// API hostname; concrete catalog entries are same-request fallbacks only.
-		$out = [$primary];
-		if ($isCheck)
-		{
-			$catalogFallbacks = array_values(array_filter($endpoints, function ($base) use ($endpointMeta) {
-				$meta = isset($endpointMeta[$base]) && is_array($endpointMeta[$base]) ? $endpointMeta[$base] : [];
-				$role = isset($meta['role']) ? (string) $meta['role'] : null;
-				if ($this->isCatalogBackupEndpointUrl((string) $base, $role))
-				{
-					return false;
-				}
-				return !array_key_exists('check_ready', $meta) || !empty($meta['check_ready']);
-			}));
-			$out = \FfApiResilience::uniqueOrderedBases($out, $catalogFallbacks);
-			$control = $this->normaliseBaseUrl($this->getControlPlaneBaseUrl());
-			if ($control !== '' && (!empty($state['control_check_fallback']) || !$catalogFallbacks))
-			{
-				$out[] = $control;
-			}
-			return \FfApiResilience::orderCheckBasesControlLast($out, $control);
-		}
-
-		return \FfApiResilience::uniqueOrderedBases($out, $endpoints);
-	}
-	/**
-	 * @param list<mixed> $endpoints
-	 * @return list<string>
-	 */
-	protected function normaliseAndSanitiseEndpoints(array $endpoints, string $manualBase): array
-	{
-		$manualBase = $this->normaliseBaseUrl($manualBase);
-		$normalised = array_values(array_unique(array_map(function ($u) {
-			return $this->normaliseBaseUrl((string) $u);
-		}, $endpoints)));
-		$normalised = array_values(array_filter($normalised, function ($u) {
-			return $u !== '' && $this->isTrustedEndpointBase($u);
-		}));
-		if ($manualBase !== '' && count($normalised) > 1)
-		{
-			$normalised = array_values(array_filter($normalised, function ($u) use ($manualBase) {
-				return $u !== $manualBase;
-			}));
-		}
-		if (!$normalised && $manualBase !== '')
-		{
-			$normalised = [$manualBase];
-		}
-		return $normalised;
-	}
-
-	protected function isTrustedEndpointBase(string $baseUrl): bool
-	{
-		$baseUrl = $this->normaliseBaseUrl($baseUrl);
-		if ($baseUrl === '')
-		{
-			return false;
-		}
-		$host = parse_url($baseUrl, PHP_URL_HOST);
-		if (!is_string($host) || trim($host) === '')
-		{
-			return false;
-		}
-		$host = strtolower(trim($host));
-		foreach ([$this->getControlPlaneBaseUrl(), $this->getHotFailoverApiBaseUrl(), $this->getManualBaseUrl()] as $trustedBase)
-		{
-			$trustedHost = parse_url($this->normaliseBaseUrl((string) $trustedBase), PHP_URL_HOST);
-			if (!is_string($trustedHost) || trim($trustedHost) === '')
-			{
-				continue;
-			}
-			$trustedHost = strtolower(trim($trustedHost));
-			if ($host === $trustedHost)
-			{
-				return true;
-			}
-			$parts = explode('.', $trustedHost);
-			if (count($parts) >= 2)
-			{
-				$root = implode('.', array_slice($parts, -2));
-				if ($host === $root || str_ends_with($host, '.' . $root))
-				{
-					return true;
-				}
-			}
-		}
-
-		return false;
+		return $this->lookupBasesOrdered();
 	}
 
 	/**
@@ -1729,7 +1226,7 @@ class ApiClient
 		bool $timeoutRetryAttempted = false
 	): ?array
 	{
-		$result = $this->requestWithRetryPass(
+		return $this->requestWithRetryPass(
 			$method,
 			$path,
 			$payload,
@@ -1738,42 +1235,11 @@ class ApiClient
 			$suppressTimeoutError,
 			$timeoutRetryAttempted
 		);
-		if ($result !== null)
-		{
-			return $result;
-		}
-		if (strpos($path, '/v1/check') === 0)
-		{
-			return null;
-		}
-		try
-		{
-			$this->refreshEndpointCatalogAndHealth(true);
-		}
-		catch (\Throwable $e)
-		{
-			// Second pass uses refreshed catalog; stale state must not block checks.
-		}
-
-		$result = $this->requestWithRetryPass(
-			$method,
-			$path,
-			$payload,
-			false,
-			$timeoutOverride,
-			$suppressTimeoutError,
-			$timeoutRetryAttempted
-		);
-		if ($result !== null)
-		{
-			return $result;
-		}
-		return null;
 	}
 
 	/**
-	 * All normal plugin API calls start at GeoDNS, then use catalog fallbacks in
-	 * server order. Runtime checks use a short per-base timeout and total budget.
+	 * Requests use the configured route followed only by its explicitly enabled
+	 * global fallbacks. Runtime checks use a short per-base timeout and total budget.
 	 */
 	protected function requestWithRetryPass(
 		string $method,
@@ -1792,10 +1258,6 @@ class ApiClient
 		}
 		$isCheck = strpos($path, '/v1/check') === 0;
 		$isContactPageCheck = \FfApiResilience::shouldUseContactPageRouting($path);
-		if ($isContactPageCheck && !\FfApiResilience::apiRegionIsLocked($this->getApiRegion()))
-		{
-			$bases = \FfApiResilience::contactPageCheckBasesOrdered($bases, $this->getHotFailoverApiBaseUrl());
-		}
 		$enforceCheckBudget = $isCheck && !$isContactPageCheck;
 		$attemptTimeout = $timeoutOverride;
 		if ($enforceCheckBudget)
@@ -1840,91 +1302,13 @@ class ApiClient
 				return null;
 			}
 		}
-		if ($this->runtimeCheckBudgetExceeded($startedAt, $enforceCheckBudget))
-		{
-			return null;
-		}
-
-		if ($isCheck && \FfApiResilience::apiRegionIsLocked($this->getApiRegion()))
-		{
-			return null;
-		}
-
-		return $this->requestControlCheckFallbackAfterEdges(
-			$method,
-			$path,
-			$payload,
-			$tried,
-			$attemptTimeout,
-			$suppressTimeoutError,
-			$timeoutRetryAttempted,
-			$startedAt,
-			$enforceCheckBudget
-		);
+		return null;
 	}
 
 	protected function runtimeCheckBudgetExceeded(float $startedAt, bool $enforce): bool
 	{
 		return $enforce
 			&& (microtime(true) - $startedAt) >= \FfApiResilience::RUNTIME_CHECK_TOTAL_BUDGET_SECONDS;
-	}
-
-	/**
-	 * Last-resort control-plane check request when catalog allows fallback and edges did not answer.
-	 *
-	 * @param list<string> $tried
-	 */
-	protected function requestControlCheckFallbackAfterEdges(
-		string $method,
-		string $path,
-		array $payload,
-		array $tried,
-		?int $timeoutOverride,
-		bool $suppressTimeoutError,
-		bool $timeoutRetryAttempted,
-		float $startedAt,
-		bool $enforceCheckBudget
-	): ?array {
-		if (strpos($path, '/v1/check') !== 0)
-		{
-			return null;
-		}
-		$state = $this->loadEndpointState();
-		if (empty($state['control_check_fallback']))
-		{
-			return null;
-		}
-		$control = $this->normaliseBaseUrl($this->getControlPlaneBaseUrl());
-		if ($control === '' || in_array($control, $tried, true))
-		{
-			return null;
-		}
-		if (!$this->baseUrlMayServeCheckTraffic($control))
-		{
-			return null;
-		}
-		if ($this->runtimeCheckBudgetExceeded($startedAt, $enforceCheckBudget))
-		{
-			return null;
-		}
-		$attempt = $this->requestWithRetryOnBase(
-			$method,
-			$path,
-			$payload,
-			$control,
-			false,
-			$timeoutOverride,
-			$suppressTimeoutError,
-			$timeoutRetryAttempted
-		);
-		if ($attempt['outcome'] === 'success')
-		{
-			/** @var array $data */
-			$data = $attempt['data'];
-			return $data;
-		}
-
-		return null;
 	}
 
 	/**
@@ -2056,14 +1440,14 @@ class ApiClient
 					return ['outcome' => 'failed', 'failover' => false];
 				}
 
-				$this->recordEndpointFailureAndRequestRefresh('non_success_status', $baseUrl, $path, (int) $status);
+				$this->recordEndpointFailure('non_success_status', $baseUrl, $path, (int) $status);
 				return ['outcome' => 'failed', 'failover' => \FfApiResilience::shouldFailoverOnEndpointStatus((int) $status)];
 			}
 
 			$data = json_decode($body, true);
 			if (!is_array($data))
 			{
-				$this->recordEndpointFailureAndRequestRefresh('invalid_json', $baseUrl, $path, (int) $status);
+				$this->recordEndpointFailure('invalid_json', $baseUrl, $path, (int) $status);
 				return ['outcome' => 'failed', 'failover' => true];
 			}
 
@@ -2074,12 +1458,16 @@ class ApiClient
 			]);
 			$nodeHeader = trim((string) $response->getHeaderLine('X-ForumFortress-Node'));
 			$state = $this->loadEndpointState();
-			$state['last_responded'] = $baseUrl;
-			$state['last_responded_node'] = $nodeHeader;
-			$state['last_response_at'] = time();
-			$this->saveEndpointState($state);
-
-			$this->maybeRefreshEndpointCatalogAfterCheckIn($path);
+			$now = time();
+			if (($state['last_responded'] ?? '') !== $baseUrl
+				|| ($state['last_responded_node'] ?? '') !== $nodeHeader
+				|| ($now - (int) ($state['last_response_at'] ?? 0)) >= 60)
+			{
+				$state['last_responded'] = $baseUrl;
+				$state['last_responded_node'] = $nodeHeader;
+				$state['last_response_at'] = $now;
+				$this->saveEndpointState($state);
+			}
 
 			return ['outcome' => 'success', 'data' => $data];
 		}
@@ -2133,7 +1521,7 @@ class ApiClient
 			if ($suppressTimeoutError && $isTimeout)
 			{
 				$this->lastCheckHadTimeout = true;
-				$this->recordEndpointFailureAndRequestRefresh('timeout', $baseUrl, $path, null, $message);
+				$this->recordEndpointFailure('timeout', $baseUrl, $path, null, $message);
 				$this->logContactPageTimeoutIfThrottled($path, $payload, $baseUrl, $message);
 				return ['outcome' => 'failed', 'failover' => true];
 			}
@@ -2144,7 +1532,7 @@ class ApiClient
 				{
 					$this->lastCheckHadTimeout = true;
 				}
-				$this->recordEndpointFailureAndRequestRefresh(
+				$this->recordEndpointFailure(
 					$isTimeout ? 'timeout' : 'connection_failure',
 					$baseUrl,
 					$path,
@@ -2168,7 +1556,7 @@ class ApiClient
 			// failover) are tried before fail-closed handling in check('register').
 			if ($isConnectionFailure)
 			{
-				$this->recordEndpointFailureAndRequestRefresh('connection_failure', $baseUrl, $path, null, $message);
+				$this->recordEndpointFailure('connection_failure', $baseUrl, $path, null, $message);
 			}
 			return ['outcome' => 'failed', 'failover' => true];
 		}
@@ -2252,7 +1640,34 @@ class ApiClient
 		$this->log('error', 'Forum Fortress ' . $taskLabel, ['message' => $message]);
 	}
 
-	protected function recordEndpointFailureAndRequestRefresh(
+	protected function noteBackgroundTaskResult(string $taskLabel, bool $success): void
+	{
+		$state = $this->loadEndpointState();
+		$shouldLog = \FfApiResilience::shouldLogConsecutiveTransientFailure(
+			$state,
+			'bg:' . $taskLabel,
+			!$success,
+			1
+		);
+		if (!$success)
+		{
+			$state['last_failure'] = [
+				'at' => time(),
+				'reason' => 'no_response',
+				'base' => $this->lookupBasesOrdered()[0] ?? '',
+				'path' => '/v1/site/ping',
+			];
+		}
+		$this->saveEndpointState($state);
+		if ($shouldLog)
+		{
+			$this->log('error', 'Forum Fortress ' . $taskLabel, [
+				'message' => 'No successful response was returned by the configured API route.',
+			]);
+		}
+	}
+
+	protected function recordEndpointFailure(
 		string $reason,
 		string $baseUrl,
 		string $path,
@@ -2277,7 +1692,6 @@ class ApiClient
 
 		$state = $this->loadEndpointState();
 		$state['last_failure'] = $failure;
-		$state['refresh_requested_at'] = $failure['at'];
 		$this->saveEndpointState($state);
 	}
 

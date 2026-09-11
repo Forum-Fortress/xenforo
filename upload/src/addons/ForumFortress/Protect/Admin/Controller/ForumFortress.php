@@ -18,20 +18,6 @@ class ForumFortress extends AbstractController
 		$this->setSectionContext('ffProtect');
 
 		$client = new ApiClient($this->app());
-		$didBootstrap = false;
-		$autoBootstrap = null;
-		if ($client->isEnabled() && trim($client->getStringOption('ffProtectApiKey')) === '')
-		{
-			try
-			{
-				$autoBootstrap = $client->bootstrapIfNeeded();
-				$didBootstrap = is_array($autoBootstrap);
-			}
-			catch (\Throwable $e)
-			{
-				$autoBootstrap = ['error' => $e->getMessage()];
-			}
-		}
 		$siteStatus = $client->cachedSiteStatus();
 		// Older installations may have a cached status payload from before the
 		// additive stats field existed. Refresh only in that case so the normal
@@ -50,10 +36,14 @@ class ForumFortress extends AbstractController
 		$endpointSummary = $client->endpointStateSummary();
 		$endpointSnapshot = $client->endpointStateSnapshot();
 		$endpointLatencyRows = $client->buildEndpointLatencyRows();
+		$lastSitePingAt = (int) ($endpointSnapshot['last_site_ping_at'] ?? 0);
+		$connectionHealthy = $client->isEnabled()
+			&& $lastSitePingAt > 0
+			&& (time() - $lastSitePingAt) <= 7200;
 
 		$viewParams = [
 			'enabled' => $client->isEnabled(),
-			'apiBaseUrl' => $client->getStringOption('ffProtectApiBaseUrl'),
+			'apiBaseUrl' => (string) ($endpointSummary['preferred'] ?? ''),
 			'apiKeyMasked' => $this->maskKey($client->getStringOption('ffProtectApiKey')),
 			'siteId' => $client->getStringOption('ffProtectSiteId'),
 			'domain' => $client->getDomain(),
@@ -63,15 +53,15 @@ class ForumFortress extends AbstractController
 			'pluginVersion' => ApiClient::PLUGIN_VERSION,
 			'moderationLaunchUrl' => $moderationLaunchUrl,
 			'preferredEndpoint' => (string) ($endpointSummary['preferred'] ?? ''),
-			'preferredMissingEndpoint' => (string) ($endpointSummary['preferred_missing'] ?? ''),
 			'lastRespondedEndpoint' => (string) ($endpointSummary['last_responded'] ?? ''),
 			'endpointState' => $endpointSnapshot,
 			'endpointLatencyRows' => $endpointLatencyRows,
+			'connectionHealthy' => $connectionHealthy,
 			'result' => $this->session()->ffProtectLastTest ?: null,
 			'attackModeResult' => $this->session()->ffProtectAttackModeResult ?: null,
 			'registerResult' => $this->session()->ffProtectRegisterResult ?: null,
 			'portalResult' => $this->session()->ffProtectPortalResult ?: null,
-			'autoBootstrap' => $autoBootstrap,
+			'autoBootstrap' => null,
 		];
 		$this->session()->ffProtectAttackModeResult = null;
 		$this->session()->ffProtectRegisterResult = null;
@@ -103,7 +93,7 @@ class ForumFortress extends AbstractController
 		catch (\Throwable $e)
 		{
 			$result['status'] = 'error';
-			$result['error'] = $e->getMessage();
+			$result['error'] = 'Forum Fortress could not open the portal. Check the plugin connection and try again.';
 		}
 
 		$this->session()->ffProtectPortalResult = $result;
@@ -207,7 +197,7 @@ class ForumFortress extends AbstractController
 		$client = new ApiClient($this->app());
 		$result = [
 			'bootstrap_status' => 'not_run',
-			'health_status' => 'not_run',
+			'site_ping_status' => 'not_run',
 			'capabilities_status' => 'not_run',
 			'site_status_status' => 'not_run',
 			'error' => null,
@@ -218,10 +208,6 @@ class ForumFortress extends AbstractController
 		{
 			$bootstrap = $client->bootstrapIfNeeded();
 			$result['bootstrap_status'] = $bootstrap ? 'ok' : ($client->getStringOption('ffProtectApiKey') !== '' ? 'already_configured' : 'no_response');
-			$client->refreshEndpointsBeforeConnectionTest(1);
-
-			$endpointSummary = $client->endpointStateSummary();
-			$result['health_status'] = !empty($endpointSummary['preferred']) ? 'ok' : 'unknown_or_stale';
 
 			$capabilities = $client->capabilities(1);
 			$result['capabilities_status'] = $capabilities ? 'ok' : 'no_response';
@@ -238,13 +224,14 @@ class ForumFortress extends AbstractController
 			{
 				$result['site_status_status'] = 'missing_api_key';
 			}
+			$endpointSummary = $client->endpointStateSummary();
 			$result['preferred_endpoint'] = (string) ($endpointSummary['preferred'] ?? '');
-			$result['preferred_missing'] = (string) ($endpointSummary['preferred_missing'] ?? '');
 			$result['answered_endpoint'] = (string) ($endpointSummary['last_responded'] ?? '');
 		}
 		catch (\Throwable $e)
 		{
-			$result['error'] = $e->getMessage();
+			\XF::logException($e, false, '[ForumFortress] Connection test failed: ');
+			$result['error'] = 'The connection test failed. Check the XenForo server error log for details.';
 		}
 
 		$this->session()->ffProtectLastTest = $result;

@@ -164,7 +164,8 @@ class ModerationBridge
 				{
 					$db->rollback();
 				}
-				$results[] = ['id' => $actionId, 'status' => 'failed', 'message' => $e->getMessage()];
+				\XF::logException($e, false, '[ForumFortress] Moderation action failed: ');
+				$results[] = ['id' => $actionId, 'status' => 'failed', 'message' => 'The XenForo moderation action could not be completed'];
 			}
 		}
 
