@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.1 - 2026-09-18
+
+- Route lifecycle and bootstrap requests through the resilient public API path.
+
 ## 1.9.0 - 2026-09-11
 
 - Replace endpoint discovery and client-side health probing with deterministic

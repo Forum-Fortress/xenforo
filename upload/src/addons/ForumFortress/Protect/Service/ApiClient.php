@@ -12,8 +12,8 @@ use function array_merge, array_values, array_unique, array_map, array_filter, b
 class ApiClient
 {
 	public const PLATFORM = 'xenforo';
-	public const PLUGIN_VERSION = '1.9.0';
-	public const CONTROL_PLANE_BASE_URL = 'https://fortress.ffapi.net';
+	public const PLUGIN_VERSION = '1.9.1';
+	public const CONTROL_PLANE_BASE_URL = 'https://api.ffapi.net';
 	/** Add-on id string; must match {@see Setup::ADD_ON_ID} for simpleCache keys. */
 	protected const ADDON_ID_FOR_CACHE = 'ForumFortress/Protect';
 	protected const ENDPOINT_STATE_CACHE_KEY = 'endpointState';
@@ -896,7 +896,7 @@ class ApiClient
 	}
 
 	/**
-	 * Control-only actions prefer fortress.ffapi.net and may fail over to api.ffapi.net.
+ * Lifecycle actions use the public API route, which owns central failover.
 	 */
 	protected function requestFromControlPlane(string $method, string $path, array $payload, ?int $timeoutOverride = null): ?array
 	{

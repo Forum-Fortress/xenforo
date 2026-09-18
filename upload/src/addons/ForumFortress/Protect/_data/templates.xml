@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <templates>
-  <template type="admin" title="ff_protect_overview" version_id="1900000" version_string="1.9.0"><![CDATA[<xf:title>Forum Fortress</xf:title>
+  <template type="admin" title="ff_protect_overview" version_id="1900100" version_string="1.9.1"><![CDATA[<xf:title>Forum Fortress</xf:title>
 
 <style>
 .ffDashboard { padding-top: 24px; }
