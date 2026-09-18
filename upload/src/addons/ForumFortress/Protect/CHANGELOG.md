@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.2 - 2026-09-18
+
+- Regenerate the XenForo integrity map for the resilient lifecycle release.
+
 ## 1.9.1 - 2026-09-18
 
 - Route lifecycle and bootstrap requests through the resilient public API path.

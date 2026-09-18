@@ -18,7 +18,7 @@
   <phrase title="option.ffProtectBlockRejectAction" version_id="1401700" version_string="1.4.17"><![CDATA[Block/reject action in XenForo]]></phrase>
   <phrase title="option.ffProtectDebugLog" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Enable debug logging]]></phrase>
   <phrase title="option.ffProtectEnabled" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Enable Forum Fortress]]></phrase>
-  <phrase title="option.ffProtectEndpointState" version_id="1900100" version_string="1.9.1"><![CDATA[Legacy API runtime state (internal)]]></phrase>
+  <phrase title="option.ffProtectEndpointState" version_id="1900200" version_string="1.9.2"><![CDATA[Legacy API runtime state (internal)]]></phrase>
   <phrase title="option.ffProtectFailOpen" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Fail open on API error]]></phrase>
   <phrase title="option.ffProtectRegistrationBlockMode" version_id="1400200" version_string="1.4.2"><![CDATA[Blocked registration handling]]></phrase>
   <phrase title="option.ffProtectSendHam" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Submit ham feedback]]></phrase>
@@ -28,14 +28,14 @@
   <phrase title="option_choice.ffProtectBlockRejectAction_spam_clean" version_id="1401700" version_string="1.4.17"><![CDATA[Spam clean (mark user/content as spam)]]></phrase>
   <phrase title="option_choice.ffProtectRegistrationBlockMode_auto_delete" version_id="1400300" version_string="1.4.3"><![CDATA[Auto-delete blocked users after XenForo rejects them]]></phrase>
   <phrase title="option_choice.ffProtectRegistrationBlockMode_rejected_keep" version_id="1400300" version_string="1.4.3"><![CDATA[Keep blocked users as Rejected in XenForo]]></phrase>
-  <phrase title="option_explain.ffProtectAllowGlobalFallback" version_id="1900100" version_string="1.9.1"><![CDATA[For a non-global region, retry through api.ffapi.net if the selected regional endpoint is unavailable. Processing may occur outside the selected region. Global mode uses api.ffapi.net.]]></phrase>
-  <phrase title="option_explain.ffProtectApiBaseUrl" version_id="1900100" version_string="1.9.1"><![CDATA[Legacy compatibility value. API routing is controlled by the selected API region.]]></phrase>
+  <phrase title="option_explain.ffProtectAllowGlobalFallback" version_id="1900200" version_string="1.9.2"><![CDATA[For a non-global region, retry through api.ffapi.net if the selected regional endpoint is unavailable. Processing may occur outside the selected region. Global mode uses api.ffapi.net.]]></phrase>
+  <phrase title="option_explain.ffProtectApiBaseUrl" version_id="1900200" version_string="1.9.2"><![CDATA[Legacy compatibility value. API routing is controlled by the selected API region.]]></phrase>
   <phrase title="option_explain.ffProtectApiKey" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Automatically populated after anonymous bootstrap or registration. You normally do not need to edit this manually.]]></phrase>
-  <phrase title="option_explain.ffProtectApiRegion" version_id="1900100" version_string="1.9.1"><![CDATA[Choose the primary API route. Global uses api.ffapi.net; regional choices use only that region unless global fallback is enabled.]]></phrase>
+  <phrase title="option_explain.ffProtectApiRegion" version_id="1900200" version_string="1.9.2"><![CDATA[Choose the primary API route. Global uses api.ffapi.net; regional choices use only that region unless global fallback is enabled.]]></phrase>
   <phrase title="option_explain.ffProtectBlockRejectAction" version_id="1401700" version_string="1.4.17"><![CDATA[When Forum Fortress rejects content through synced moderation actions, choose whether XenForo should delete the item from the approval queue or run a spam clean on the author.]]></phrase>
   <phrase title="option_explain.ffProtectDebugLog" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Write Forum Fortress API and decision details into the XenForo log.]]></phrase>
   <phrase title="option_explain.ffProtectEnabled" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Turns Forum Fortress checks on or off.]]></phrase>
-  <phrase title="option_explain.ffProtectEndpointState" version_id="1900100" version_string="1.9.1"><![CDATA[Retained only to migrate runtime state from older releases. New runtime state is stored in XenForo's simple cache.]]></phrase>
+  <phrase title="option_explain.ffProtectEndpointState" version_id="1900200" version_string="1.9.2"><![CDATA[Retained only to migrate runtime state from older releases. New runtime state is stored in XenForo's simple cache.]]></phrase>
   <phrase title="option_explain.ffProtectFailOpen" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[If enabled, users are allowed through when the Forum Fortress API cannot be reached.]]></phrase>
   <phrase title="option_explain.ffProtectRegistrationBlockMode" version_id="1400200" version_string="1.4.2"><![CDATA[Choose what happens when Forum Fortress returns a block decision for registration checks.]]></phrase>
   <phrase title="option_explain.ffProtectSendHam" version_id="1000090" version_string="1.0.0 Alpha 9"><![CDATA[Send false-positive approvals back to Forum Fortress when XenForo marks cached spam content as ham.]]></phrase>
