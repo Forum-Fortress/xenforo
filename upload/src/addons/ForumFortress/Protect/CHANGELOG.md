@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.4 - 2026-10-12
+
+- Add an Off-by-default native seven-day ban after two independent eligible BLOCKs in 24 hours.
+- Deduplicate both decision IDs and identical submitted bodies using atomic local evidence.
+- Apply bans only in a separate job after rechecking ownership, current settings and staff/new-member exemptions.
+- Preserve existing credentials, identity, routing, approval metadata and options on upgrades.
+- Retain native reversal/expiry and local action audit; add no spam-clean or account deletion.
+
+## 1.9.3 - 2026-10-02
+
+- Preserve the persisted pre-edit post/thread body long enough for Forum Fortress to detect links injected during XenForo edits, including quote-link laundering.
+- Send content age for edit-timing analysis while keeping the previous raw body transient and out of stored decision payloads.
+
 ## 1.9.2 - 2026-09-18
 
 - Regenerate the XenForo integrity map for the resilient lifecycle release.

@@ -14,9 +14,14 @@ class Account extends XFCP_Account
 		$form = parent::accountDetailsSaveProcess($visitor);
 		$input = $this->filter([
 			'profile' => [
+				'location' => 'str',
 				'website' => 'str',
 			],
+			'user' => [
+				'custom_title' => 'str',
+			],
 		]);
+		$input['profile']['about'] = $this->plugin('XF:Editor')->fromInput('about');
 
 		$form->validate(function (FormAction $form) use ($input, $visitor)
 		{
@@ -26,10 +31,26 @@ class Account extends XFCP_Account
 			}
 
 			$website = trim((string) ($input['profile']['website'] ?? ''));
-			if ($website === '')
+			$location = trim((string) ($input['profile']['location'] ?? ''));
+			$about = trim((string) ($input['profile']['about'] ?? ''));
+			$customTitle = trim((string) ($input['user']['custom_title'] ?? ''));
+
+			$profileFields = [
+				'website' => $website,
+				'location' => $location,
+				'about' => $about,
+				'custom_title' => $customTitle,
+			];
+			$profileFields = array_filter($profileFields, static function ($value)
+			{
+				return trim((string) $value) !== '';
+			});
+			if (!$profileFields)
 			{
 				return;
 			}
+
+			$content = implode("\n", array_values($profileFields));
 
 			$client = new ApiClient($this->app());
 			if (!$client->isEnabled())
@@ -42,7 +63,7 @@ class Account extends XFCP_Account
 			{
 				$client->bootstrapIfNeeded();
 
-				$links = [];
+				$links = ApiClient::extractLinks($content);
 				$normalized = ApiClient::extractDomain($website);
 				if ($normalized)
 				{
@@ -54,11 +75,9 @@ class Account extends XFCP_Account
 				);
 
 				$response = $client->check('profile_edit', $client->buildUserPayload($visitor, [
-					'profile_fields' => [
-						'website' => $website,
-					],
+					'profile_fields' => $profileFields,
 					'links' => $links,
-					'content' => null,
+					'content' => $content,
 					'content_id' => (string) $visitor->user_id,
 				]));
 			}
@@ -71,6 +90,10 @@ class Account extends XFCP_Account
 			if ($decision === 'denied')
 			{
 				$form->logError(\XF::phrase('ff_profile_blocked'));
+				(new \ForumFortress\Protect\Service\RepeatOffender($this->app()))->record(
+					$visitor, (int) \XF::visitor()->user_id, $response, 'user',
+					$content, (int) $visitor->user_id
+				);
 			}
 			elseif ($decision === 'moderated')
 			{

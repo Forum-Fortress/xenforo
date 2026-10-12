@@ -37,6 +37,11 @@ class ForumFortressContent extends AbstractProvider implements ContentCheckerInt
 			'thread_id' => isset($extraParams['thread_id']) ? (string) $extraParams['thread_id'] : null,
 		]);
 
+		if (substr($endpoint, -5) === '_edit')
+		{
+			$payload = array_merge($payload, $this->loadPersistedEditBaseline($contentType, $extraParams));
+		}
+
 		if ($endpoint === 'signature_edit')
 		{
 			$payload['signature_text'] = (string) $message;
@@ -85,6 +90,14 @@ class ForumFortressContent extends AbstractProvider implements ContentCheckerInt
 			);
 		}
 		$this->logDecision($decision);
+
+		if ($decision === 'denied')
+		{
+			(new \ForumFortress\Protect\Service\RepeatOffender($this->app()))->record(
+				$user, (int) \XF::visitor()->user_id, $response, $contentType,
+				(string) $message, (int) ($extraParams['content_id'] ?? 0)
+			);
+		}
 
 		$this->logParam('ff_endpoint', $endpoint);
 		$this->logParam('ff_content_type', $contentType);
@@ -167,6 +180,68 @@ class ForumFortressContent extends AbstractProvider implements ContentCheckerInt
 				],
 			]);
 		}
+	}
+
+	/**
+	 * Read the persisted pre-save body instead of the mutable entity instance.
+	 * XenForo's content spam checker runs while the edited entity may already
+	 * contain the submitted message in memory, while the database still holds
+	 * the version that Forum Fortress needs for an edit delta.
+	 */
+	protected function loadPersistedEditBaseline(string $contentType, array $extraParams): array
+	{
+		$contentId = isset($extraParams['content_id']) ? (int) $extraParams['content_id'] : 0;
+		if ($contentId <= 0)
+		{
+			return [];
+		}
+
+		$db = $this->app()->db();
+		$row = null;
+		try
+		{
+			switch (strtolower($contentType))
+			{
+				case 'thread':
+					$row = $db->fetchRow(
+						'SELECT p.message, p.post_date FROM xf_thread AS t ' .
+						'INNER JOIN xf_post AS p ON (p.post_id = t.first_post_id) ' .
+						'WHERE t.thread_id = ?',
+						$contentId
+					);
+					break;
+
+				case 'post':
+					$row = $db->fetchRow(
+						'SELECT message, post_date FROM xf_post WHERE post_id = ?',
+						$contentId
+					);
+					break;
+
+				default:
+					return [];
+			}
+		}
+		catch (\Throwable $e)
+		{
+			// Edit history is additive intelligence. Never make posting depend on
+			// an optional baseline lookup succeeding on a customer installation.
+			return [];
+		}
+
+		if (!is_array($row) || !array_key_exists('message', $row))
+		{
+			return [];
+		}
+
+		$baseline = ['previous_content' => (string) $row['message']];
+		$postDate = (int) ($row['post_date'] ?? 0);
+		if ($postDate > 0)
+		{
+			$baseline['edit_age_seconds'] = max(0, time() - $postDate);
+		}
+
+		return $baseline;
 	}
 
 	protected function mapContentTypeToEndpoint(string $contentType, array $extraParams = []): string
