@@ -14,5 +14,6 @@ class RepeatEvidence
         // Seven-day tombstones outlive the 24-hour counter window. After this
         // retention period the account itself is too old to qualify.
         $db->query('DELETE FROM xf_ff_protect_repeat_event WHERE observed_at <= ?', time() - RepeatOffender::BAN_DURATION);
+        $db->query('DELETE FROM xf_ff_protect_repeat_cleanup_event WHERE observed_at <= ?', time() - RepeatOffender::BAN_DURATION);
     }
 }

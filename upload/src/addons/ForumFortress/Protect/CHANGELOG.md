@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.9.5 - 2026-10-14
+
+- Add an Off-by-default, three-certificate/five-post cleanup gate that invokes
+  the native XenForo Spam Cleaner as a moderator with the required permission.
+- Soft-delete authored replies and profile messages through the native content
+  cleaner and restoration log, including messages in restricted forums.
+- Apply a seven-day native ban while preserving avatars, profile banners,
+  thread starters and conversations; skip native user spam submission.
+- Honor completed cleanup receipts after moderator restoration.
+- Keep cleanup evidence and completion receipts separate from ban-only events.
+
 ## 1.9.4 - 2026-10-12
 
 - Add an Off-by-default native seven-day ban after two independent eligible BLOCKs in 24 hours.
