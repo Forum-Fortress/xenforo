@@ -63,11 +63,61 @@ class RepeatOffender
     public function record(User $user, int $actorId, ?array $response,
         string $contentType, string $message, int $contentId = 0): void
     {
-        $this->recordCleanup($user, $actorId, $response, $contentType, $message, $contentId);
+        // Include option, cache and DB-adapter acquisition in the failure boundary.
+        // Optional bookkeeping must never turn a denied submission into a 500.
+        try
+        {
+            $options = $this->app->options();
+            if (empty($options->ffProtectEnabled)
+                || (empty($options->ffProtectRepeatOffenderBan) && empty($options->ffProtectRepeatOffenderCleanup)))
+            {
+                $this->note('disabled_by_administrator', (int) $user->user_id);
+                return;
+            }
+            if (!empty($options->ffProtectRepeatOffenderCleanup))
+            {
+                $this->recordCleanup($user, $actorId, $response, $contentType, $message, $contentId);
+                return;
+            }
+            $this->recordBan($user, $actorId, $response, $contentType, $message, $contentId);
+        }
+        catch (\Throwable $e)
+        {
+            $this->note('bookkeeping_failed', (int) $user->user_id);
+            \XF::logException($e, false, 'Forum Fortress repeat-offender bookkeeping: ');
+        }
+    }
+
+    /** Bounded local status for authenticated administrators; never stores submitted text. */
+    public function note(string $reason, int $userId): void
+    {
+        try
+        {
+            $this->app->simpleCache()->setValue('ForumFortress/Protect', 'repeatOffenderStatus',
+                ['reason' => $reason, 'user_id' => $userId, 'at' => time()]);
+        }
+        catch (\Throwable $e) { /* Diagnostics are optional too. */ }
+    }
+
+    public function diagnostics(): array
+    {
+        $options = $this->app->options();
+        return [
+            'mode' => empty($options->ffProtectEnabled) ? 'off'
+                : (!empty($options->ffProtectRepeatOffenderCleanup) ? 'cleanup'
+                : (!empty($options->ffProtectRepeatOffenderBan) ? 'ban' : 'off')),
+            'last' => $this->app->simpleCache()->getValue('ForumFortress/Protect', 'repeatOffenderStatus'),
+        ];
+    }
+
+    protected function recordBan(User $user, int $actorId, ?array $response,
+        string $contentType, string $message, int $contentId): void
+    {
         $uid = (int) $user->user_id;
         $reference = self::reference($response);
         if (!$this->enabled() || !$reference || $uid <= 1 || $uid !== $actorId)
         {
+            $this->note($uid !== $actorId ? 'actor_mismatch' : 'certificate_or_reference_absent', $uid);
             return;
         }
         // Only content with an unambiguous author is supported. Registration,
@@ -80,6 +130,7 @@ class RepeatOffender
         ];
         if (!isset($tables[$contentType]) && !in_array($contentType, ['user', 'user_signature'], true))
         {
+            $this->note('unsupported_content', $uid);
             return;
         }
         $db = $this->app->db();
@@ -94,11 +145,13 @@ class RepeatOffender
                     [$table, $key] = $tables[$contentType];
                     if ((int) $db->fetchOne("SELECT user_id FROM $table WHERE $key = ?", $contentId) !== $uid)
                     {
+                        $this->note('actor_mismatch', $uid);
                         return;
                     }
                 }
                 elseif ($contentId !== $uid)
                 {
+                    $this->note('actor_mismatch', $uid);
                     return;
                 }
             }
@@ -115,6 +168,7 @@ class RepeatOffender
                 || !is_array($member) || !self::eligibleUser($member, $now))
             {
                 $db->commit();
+                $this->note(!empty($state['last_ban_at']) ? 'moderation_completed' : 'protected_or_established_account', $uid);
                 return;
             }
             // Keep expired/consumed receipts while the account can qualify.
@@ -127,9 +181,11 @@ class RepeatOffender
                 // Conservative saturation: disable automation for this member
                 // instead of evicting dedup records and accepting old replays.
                 $db->commit();
+                $this->note('evidence_capacity_reached', $uid);
                 return;
             }
             $count = (int) $db->fetchOne('SELECT COUNT(*) FROM xf_ff_protect_repeat_event WHERE user_id = ? AND consumed = 0', $uid);
+            $beforeCount = $count;
             if ($count < 2)
             {
                 $db->query('INSERT IGNORE INTO xf_ff_protect_repeat_event
@@ -145,11 +201,13 @@ class RepeatOffender
                     'ForumFortress\\Protect:RepeatOffender', $uid);
             }
             $db->commit();
+            $this->note($count >= 2 ? 'native_ban_queued' : ($count === $beforeCount ? 'duplicate_decision_or_body' : 'evidence_recorded'), $uid);
         }
         catch (\Throwable $e)
         {
             // Optional enforcement must never change the ordinary BLOCK result.
             if ($transaction) $db->rollback();
+            $this->note('bookkeeping_failed', $uid);
             \XF::logException($e, false, 'Forum Fortress repeat offender: ');
         }
     }
@@ -163,6 +221,7 @@ class RepeatOffender
             || !$response || ($response['repeat_cleanup_eligible'] ?? null) !== true
             || DecisionMapper::toContentDecision($response) !== 'denied')
         {
+            $this->note('certificate_or_reference_absent', (int) $user->user_id);
             return;
         }
         $reference = $response['decision_reference'] ?? null;
@@ -173,15 +232,17 @@ class RepeatOffender
         else
         {
             $id = $response['decision_id'] ?? null;
-            if (!(is_int($id) || (is_string($id) && ctype_digit($id))) || (int) $id <= 0) return;
+            if (!(is_int($id) || (is_string($id) && ctype_digit($id))) || (int) $id <= 0)
+            { $this->note('certificate_or_reference_absent', (int) $user->user_id); return; }
             $referenceHash = hash('sha256', 'cleanup-decision:' . (int) $id);
         }
         $tables = ['post' => ['xf_post', 'post_id'], 'thread' => ['xf_thread', 'thread_id'],
             'profile_post' => ['xf_profile_post', 'profile_post_id'],
             'profile_post_comment' => ['xf_profile_post_comment', 'profile_post_comment_id']];
-        if (!isset($tables[$contentType]) && !in_array($contentType, ['user', 'user_signature'], true)) return;
+        if (!isset($tables[$contentType]) && !in_array($contentType, ['user', 'user_signature'], true))
+        { $this->note('unsupported_content', (int) $user->user_id); return; }
         $uid = (int) $user->user_id;
-        if ($uid <= 1 || $uid !== $actorId) return;
+        if ($uid <= 1 || $uid !== $actorId) { $this->note('actor_mismatch', $uid); return; }
         $db = $this->app->db();
         $transaction = false;
         try
@@ -191,9 +252,10 @@ class RepeatOffender
                 if (isset($tables[$contentType]))
                 {
                     [$table, $key] = $tables[$contentType];
-                    if ((int) $db->fetchOne("SELECT user_id FROM $table WHERE $key = ?", $contentId) !== $uid) return;
+                    if ((int) $db->fetchOne("SELECT user_id FROM $table WHERE $key = ?", $contentId) !== $uid)
+                    { $this->note('actor_mismatch', $uid); return; }
                 }
-                elseif ($contentId !== $uid) return;
+                elseif ($contentId !== $uid) { $this->note('actor_mismatch', $uid); return; }
             }
             $now = time();
             $eventHash = hash('sha256', 'cleanup-body:' . $message);
@@ -204,12 +266,14 @@ class RepeatOffender
             if (!$state || !empty($state['last_cleanup_at'])
                 || !is_array($member) || !self::eligibleUser($member, $now, 5))
             {
-                $db->commit(); return;
+                $db->commit();
+                $this->note(!empty($state['last_cleanup_at']) ? 'moderation_completed' : 'protected_or_established_account', $uid);
+                return;
             }
             $db->query('UPDATE xf_ff_protect_repeat_cleanup_event SET consumed = 1 WHERE user_id = ? AND observed_at <= ?',
                 [$uid, $now - self::WINDOW]);
             $total = (int) $db->fetchOne('SELECT COUNT(*) FROM xf_ff_protect_repeat_cleanup_event WHERE user_id = ?', $uid);
-            if ($total >= 128) { $db->commit(); return; }
+            if ($total >= 128) { $db->commit(); $this->note('evidence_capacity_reached', $uid); return; }
             $db->query('INSERT IGNORE INTO xf_ff_protect_repeat_cleanup_event
                 (user_id, event_hash, reference_hash, observed_at) VALUES (?, ?, ?, ?)',
                 [$uid, $eventHash, $referenceHash, $now]);
@@ -221,10 +285,12 @@ class RepeatOffender
                     'ForumFortress\\Protect:RepeatSpamCleanup', $uid);
             }
             $db->commit();
+            $this->note($count >= 3 ? 'native_cleanup_queued' : 'evidence_recorded_or_duplicate', $uid);
         }
         catch (\Throwable $e)
         {
             if ($transaction) $db->rollback();
+            $this->note('bookkeeping_failed', $uid);
             \XF::logException($e, false, 'Forum Fortress repeat-spammer cleanup evidence: ');
         }
     }

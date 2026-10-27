@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.9.6 - 2026-10-27
+
+- Show the effective repeat-offender mode and last local action or suppression on the administrator overview.
+- Keep denied profile submissions blocked when optional evidence storage is unavailable.
+- Preserve explicit opt-in, separate evidence pools, native seven-day bans and reversible Spam Cleaner cleanup. Existing API certificates remain required.
+
 ## 1.9.5 - 2026-10-14
 
 - Add an Off-by-default, three-certificate/five-post cleanup gate that invokes

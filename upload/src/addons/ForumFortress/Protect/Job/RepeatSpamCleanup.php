@@ -13,6 +13,18 @@ class RepeatSpamCleanup extends AbstractJob
 
     public function run($maxRunTime)
     {
+        $evidence = new Evidence($this->app);
+        try { return $this->runAction($maxRunTime); }
+        catch (\Throwable $e)
+        {
+            $evidence->note(str_contains($e->getMessage(), 'Spam Cleaner permission')
+                ? 'spam_cleaner_permission_unavailable' : 'job_failed_awaiting_retry', (int) $this->data['user_id']);
+            throw $e;
+        }
+    }
+
+    protected function runAction($maxRunTime)
+    {
         $uid = (int) $this->data['user_id'];
         if ($uid <= 1) return $this->complete();
         $db = $this->app->db();
@@ -30,6 +42,7 @@ class RepeatSpamCleanup extends AbstractJob
             {
                 $db->query('UPDATE xf_ff_protect_repeat_cleanup_event SET consumed = 1 WHERE user_id = ?', $uid);
                 $db->commit();
+                (new Evidence($this->app))->note('job_revalidation_suppressed', $uid);
                 return $this->complete();
             }
             $target = $this->app->finder('XF:User')->where('user_id', $uid)->fetchOne();
@@ -145,6 +158,7 @@ class RepeatSpamCleanup extends AbstractJob
                     $db->query('UPDATE xf_ff_protect_repeat_cleanup_state SET last_cleanup_at = ? WHERE user_id = ?', [$now, $uid]);
                     $db->query('UPDATE xf_ff_protect_repeat_cleanup_event SET consumed = 1 WHERE user_id = ?', $uid);
                     $db->commit();
+                    (new Evidence($this->app))->note('native_cleanup_completed', $uid);
                     return $this->complete();
                 }
                 $db->commit();
@@ -160,6 +174,7 @@ class RepeatSpamCleanup extends AbstractJob
                 throw $e;
             }
         }
+        (new Evidence($this->app))->note('spam_cleaner_permission_unavailable', $uid);
         throw new \RuntimeException('No XenForo moderator with Spam Cleaner permission could run the cleanup');
     }
 

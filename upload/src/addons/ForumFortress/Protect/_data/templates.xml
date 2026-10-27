@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <templates>
-  <template type="admin" title="ff_protect_overview" version_id="1900200" version_string="1.9.2"><![CDATA[<xf:title>Forum Fortress</xf:title>
+  <template type="admin" title="ff_protect_overview" version_id="1900600" version_string="1.9.6"><![CDATA[<xf:title>Forum Fortress</xf:title>
 
 <style>
 .ffDashboard { padding-top: 24px; }
@@ -81,6 +81,10 @@
 		<xf:if is="$endpointState"><div class="block-row"><strong>Request route</strong></div><table class="dataList ffTable"><tbody><xf:foreach loop="$endpointLatencyRows" value="$row"><tr><td>{$row.endpoint}</td><td>{$row.latency}<xf:if is="$row.is_preferred"> <span class="u-muted">(primary)</span></xf:if></td></tr></xf:foreach></tbody></table></xf:if>
 	</div></details>
 
+    <div class="ffCard"><div class="ffMaintenanceBody"><strong>Repeat-offender protection: {$repeatOffenderStatus.mode}</strong>
+    <p>Ban mode: two certified BLOCKs above 80, up to ten posts. Cleanup: three certified BLOCKs at 80 or above, up to five posts. Both apply only to new eligible members and use a reversible seven-day ban. Cleanup preserves the account and provides native content restoration.</p>
+    <xf:if is="$repeatOffenderStatus.last"><p>Last local result: {$repeatOffenderStatus.last.reason}; member {$repeatOffenderStatus.last.user_id}; <xf:date time="{$repeatOffenderStatus.last.at}" />. Failed jobs remain visible in the XenForo job and error logs.</p></xf:if>
+    <p>Enable these options in <a href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}">Forum Fortress settings</a>. Registration auto-delete applies only to rejected registrations.</p></div></div>
 	<details class="ffCard ffMaintenance"><summary><span><strong>About</strong><small>Configuration and protection options.</small></span><i class="fa--xf far fa-chevron-down"></i></summary><div class="ffMaintenanceBody"><p>Use <a href="{{ link('options/groups', {'group_id': 'ffProtect'}) }}">Forum Fortress settings</a> for API configuration and protection options. This page covers status, portal access, attack mode, connection tests, and API routing.</p></div></details>
 </div></div>]]></template>
 </templates>

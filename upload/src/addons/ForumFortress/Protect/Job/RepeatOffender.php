@@ -11,6 +11,17 @@ class RepeatOffender extends AbstractJob
 
     public function run($maxRunTime)
     {
+        $evidence = new Evidence($this->app);
+        try { return $this->runAction($maxRunTime); }
+        catch (\Throwable $e)
+        {
+            $evidence->note('job_failed_awaiting_retry', (int) $this->data['user_id']);
+            throw $e;
+        }
+    }
+
+    protected function runAction($maxRunTime)
+    {
         $uid = (int) $this->data['user_id'];
         if ($uid <= 1) return $this->complete();
         $db = $this->app->db();
@@ -29,6 +40,7 @@ class RepeatOffender extends AbstractJob
             {
                 $db->query('UPDATE xf_ff_protect_repeat_event SET consumed = 1 WHERE user_id = ?', $uid);
                 $db->commit();
+                $evidence->note('job_revalidation_suppressed', $uid);
                 return $this->complete();
             }
             $repo = $this->app->repository('XF:Banning');
@@ -54,6 +66,7 @@ class RepeatOffender extends AbstractJob
                 [$now, $end, $uid]);
             $db->query('UPDATE xf_ff_protect_repeat_event SET consumed = 1 WHERE user_id = ?', $uid);
             $db->commit();
+            $evidence->note('native_ban_completed', $uid);
         }
         catch (\Throwable $e)
         {

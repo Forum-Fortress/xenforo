@@ -42,6 +42,7 @@ class ForumFortress extends AbstractController
 			&& (time() - $lastSitePingAt) <= 7200;
 
 		$viewParams = [
+			'repeatOffenderStatus' => (new \ForumFortress\Protect\Service\RepeatOffender($this->app()))->diagnostics(),
 			'enabled' => $client->isEnabled(),
 			'apiBaseUrl' => (string) ($endpointSummary['preferred'] ?? ''),
 			'apiKeyMasked' => $this->maskKey($client->getStringOption('ffProtectApiKey')),
