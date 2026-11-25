@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.9.7 - 2026-11-25
+
+- Report the visitor IP automatically behind reverse proxies that forward it.
+
 ## 1.9.6 - 2026-10-27
 
 - Show the effective repeat-offender mode and last local action or suppression on the administrator overview.

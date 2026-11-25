@@ -3,7 +3,9 @@
 namespace ForumFortress\Protect\Service;
 
 require_once __DIR__ . '/FfApiResilience.php';
+require_once __DIR__ . '/ClientIp.php';
 
+use ForumFortress\Proxy\ClientIp;
 use XF\App;
 use XF\Entity\User;
 
@@ -12,7 +14,7 @@ use function array_merge, array_values, array_unique, array_map, array_filter, b
 class ApiClient
 {
 	public const PLATFORM = 'xenforo';
-	public const PLUGIN_VERSION = '1.9.6';
+	public const PLUGIN_VERSION = '1.9.7';
 	public const CONTROL_PLANE_BASE_URL = 'https://api.ffapi.net';
 	/** Add-on id string; must match {@see Setup::ADD_ON_ID} for simpleCache keys. */
 	protected const ADDON_ID_FOR_CACHE = 'ForumFortress/Protect';
@@ -763,16 +765,17 @@ class ApiClient
 
 	public function buildUserPayload(User $user, array $extra = []): array
 	{
+		$request = $this->app->request();
 		$email = trim((string) $user->email);
 		$emailDomain = $email && strpos($email, '@') !== false ? strtolower((string) substr(strrchr($email, '@'), 1)) : null;
 
 		$payload = [
-			'ip' => $this->app->request()->getIp(),
+			'ip' => ClientIp::resolve((string) $request->getIp(), $request->getServerInfo()),
 			'username' => (string) $user->username,
 			'email' => $email ?: null,
 			'account_age_seconds' => $user->register_date ? max(0, time() - (int) $user->register_date) : 0,
 			'post_count' => (int) $user->message_count,
-			'user_agent' => $this->app->request()->getUserAgent(),
+			'user_agent' => $request->getUserAgent(),
 		];
 
 		if ($emailDomain)
